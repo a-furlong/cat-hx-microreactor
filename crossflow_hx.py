@@ -2,198 +2,189 @@
 # -*- coding: utf-8 -*-
 """
 Created on Thu Oct 15 13:52:05 2020
-Modified on 27 Oct
+Modified on 2 Nov
 
 Cross flow heat exchanger model function
 
-@author: afurlong
+author: afurlong
 """
 
-def crossflow_hx(fuel_comp, fuel_flow, fuel_temp, fuel_p, 
-                 steam_flow, steam_temp, steam_p,
-                 fuel_height, fuel_width, steam_height, steam_width,
-                 n_fuelch, n_steamch):
-    #fuel_comp is cantera notation list
-    #fuel_flow is molar flow rate, kg/s
-    #fuel_temp is heat exchanger section inlet temperature in K
-    #fuel_p is heat exchange section pressure in Pa
-    #steam_flow is mass flow rate of steam, in kg/s
-    #steam_temp is steam inlet temperature in K
-    #steam_p is steam inlet pressure in Pa
-    #fuel_height/fuel_width is fuel channel dimensions in m
-    #steam_height/width is steam channel dimensions in m
-    #n_fuelch is total number of fuel channels across
-    #n_steamch is total number of steam channels across
-    
-    #define geometry of hx areas
-    fuel_cs = fuel_height*fuel_width
-    steam_cs = steam_width*steam_height
-    fuel_dh = 2*fuel_height*fuel_width/(fuel_height+fuel_width)
-    steam_dh = 2*steam_height*steam_width/(steam_height+steam_width)
-    hx_area = steam_width*fuel_width
-    
-    #create arrays for temperatures of each channel, plus either a row or column for inlet and outlet
-    fuel_temps = emptyarray(n_fuelch, n_steamch, 1)
-    fuel_temps[:, 0] = fuel_temp
-    fuel_temps[:, 1:] = 0
-    
-    steam_temps = emptyarray(n_fuelch, n_steamch, 2)
-    steam_temps[0, :] = steam_temp
-    steam_temps[1:, :] = 0
-    
-    #use cantera to get initial fluid densities
-    fuel = ct.Solution('gri30.xml')
-    fuel.transport_model = 'Mix'
-    fuel.X = fuel_comp
-    fuel.TP = fuel_temp, fuel_p
-    fuel_density = emptyarray(n_fuelch, n_steamch, 1)
-    fuel_density[:, 0] = fuel.density
-    
-    steam_density = emptyarray(n_fuelch, n_steamch, 2)
-    steam = ct.Solution('gri30.xml')
-    steam.transport_model = 'Mix'
-    steam.X = {'H2O': 1}
-    steam.TP = steam_temp, steam_p
-    steam_density[0, :] = steam.density
-    
-    #set up array for fluid velocities, reynolds numbers, heat transfer coefficients
-    fuel_velocity = emptyarray(n_fuelch, n_steamch, 1)
-    fuel_velocity[:, 0] = fuel_flow/(fuel.density*fuel_cs*n_fuelch)
-    
-    steam_velocity = emptyarray(n_fuelch, n_steamch, 2)
-    steam_velocity[0, :] = steam_flow/(steam.density*steam_cs*n_steamch)
-    
-    fuel_re = emptyarray(n_fuelch, n_steamch, 1)
-    fuel_re[:, 0] = reynolds(fuel.density, fuel_velocity[0,0], fuel_dh, fuel.viscosity)
-    
-    steam_re = emptyarray(n_fuelch, n_steamch, 2)
-    steam_re[0, :] = reynolds(steam.density, steam_velocity[0,0], steam_dh, steam.viscosity)
-        
-    fuel_viscosity = emptyarray(n_fuelch, n_steamch, 1)
-    fuel_viscosity[:, 0] = fuel.viscosity
-    steam_viscosity = emptyarray(n_fuelch, n_steamch, 2)
-    steam_viscosity[0, :] = steam.viscosity
-    
-    fuel_k = emptyarray(n_fuelch, n_steamch, 1)
-    fuel_k[:, 0] = fuel.thermal_conductivity
-    steam_k = emptyarray(n_fuelch, n_steamch, 2)
-    steam_k[0, :] = steam.thermal_conductivity
-    fuel_cp = emptyarray(n_fuelch, n_steamch, 1)
-    fuel_cp[:, 0] = fuel.cp_mass
-    steam_cp = emptyarray(n_fuelch, n_steamch, 2)
-    steam_cp[0, :] = steam.cp_mass
-    
-    fuel_Pr = emptyarray(n_fuelch, n_steamch, 1)
-    fuel_Pr[:, 0] = fuel.viscosity*fuel.cp_mass/fuel.thermal_conductivity
-    steam_Pr = emptyarray(n_fuelch, n_steamch, 2)
-    steam_Pr[0, :] = steam.viscosity*steam.cp_mass/steam.thermal_conductivity
-    
-    fuel_nu = emptyarray(n_fuelch, n_steamch, 1)
-    fuel_nu[:, 0] = 0.023*(fuel_re[0, 0]**0.8)*(fuel_Pr[0, 0])**(0.3)
-    steam_nu = emptyarray(n_fuelch, n_steamch, 2)
-    steam_nu[0, :] = 0.023*(steam_re[0, 0]**0.8)*(steam_Pr[0, 0])**(0.4)
-    
-    fuel_h = emptyarray(n_fuelch, n_steamch, 1)
-    fuel_h[:, 0] = fuel_nu[0, 0]*fuel.thermal_conductivity/fuel_dh
-    
-    steam_h = emptyarray(n_fuelch, n_steamch, 2)
-    steam_h[0, :] = steam_nu[0, 0]*steam.thermal_conductivity/steam_dh
-    
-    U = np.empty(shape = [n_fuelch, n_steamch], dtype = float)
-    U[:, :] = 0
-    Q = np.empty(shape = [n_fuelch, n_steamch], dtype = float)
-    Q[:, :] = 0
-   
-    #iterative steps to solve for all temperatures after setup
-    for j in range(0, n_steamch):
-        for i in range(0, n_fuelch):
-            #use steel at 45 W/mK, 1 mm thick
-            U[i, j] = 1/(1/fuel_h[i, j] + 1/steam_h[i, j] + 0.001/45)
-            Q[i, j] = U[i, j]*hx_area*(fuel_temps[i, j] - steam_temps[i, j])
-            fuel_temps[i, j+1] = (fuel_density[i, j]*fuel_velocity[i, j]*fuel_cs*fuel_cp[i, j]*fuel_temps[i, j] - Q[i, j])/(fuel_density[i, j]*fuel_velocity[i, j]*fuel_cp[i, j]*fuel_cs)
-            steam_temps[i+1, j] = (steam_density[i, j]*steam_velocity[i, j]*steam_cs*steam_cp[i, j]*steam_temps[i, j] + Q[i, j])/(steam_density[i, j]*steam_velocity[i, j]*steam_cp[i, j]*steam_cs)
-            #update mixture for a new set of fluid properties, and update arrays as relevant
-            fuel.TP = fuel_temps[i, j+1], fuel_p
-            steam.TP = steam_temps[i+1, j], steam_p
-
-            fuel_density[i, j+1] = fuel.density
-            steam_density[i+1, j] = steam.density
-            fuel_velocity[i, j+1] = fuel_velocity[i, j]*fuel_density[i, j+1]/fuel_density[i, j]
-            steam_velocity[i+1, j] = steam_velocity[i, j]*steam_density[i+1, j]/steam_density[i, j]
-            fuel_viscosity[i, j+1] = fuel.viscosity
-            steam_viscosity[i+1, j] = steam.viscosity
-            fuel_k[i, j+1] = fuel.thermal_conductivity
-            steam_k[i+1, j] = steam.thermal_conductivity
-            fuel_cp[i, j+1] = fuel.cp_mass
-            steam_cp[i+1, j] = steam.cp_mass
-            fuel_Pr[i, j+1] = fuel_viscosity[i, j+1]*fuel_cp[i, j+1]/fuel_k[i, j+1]
-            steam_Pr[i+1, j] = steam_viscosity[i+1, j]*steam_cp[i+1, j]/steam_k[i+1, j]
-            
-            fuel_re[i, j+1] = reynolds(fuel_density[i, j+1], fuel_velocity[i, j+1], fuel_dh, fuel_viscosity[i, j+1])
-            steam_re[i+1, j] = reynolds(steam_density[i+1, j], steam_velocity[i+1, j], steam_dh, steam_viscosity[i+1, j])
-            
-            #calculate new nusselt numbers and heat transfer coefficients
-            fuel_nu[i, j+1] = 0.023*(fuel_re[i, j+1]**0.8)*(fuel_Pr[i, j+1])**(0.3)
-            steam_nu[i+1, j] = 0.023*(steam_re[i+1, j]**0.8)*(steam_Pr[i+1, j])**(0.4)
-            fuel_h[i, j+1] = fuel_nu[i, j+1]*fuel_k[i, j+1]/fuel_dh
-            steam_h[i+1, j] = steam_nu[i+1, j]*steam_k[i+1, j]/steam_dh
-            
-    return(fuel_temps, steam_temps)
-    
-def reynolds(density, velocity, diameter, viscosity):
-    re = density*velocity*diameter/viscosity
-    return(re)
-    
-def emptyarray(column, row, dim):
-    if dim == 1:
-        narrow = 1
-        wide = 0
-    elif dim == 2:
-        narrow = 0
-        wide = 1
-    empty = np.empty(shape = [column+1*wide, row+1*narrow], dtype = float)
-    empty[:, :] = 0
-    return(empty)
-    
-
-####main
-import numpy as np
 import cantera as ct
-import seaborn as sns
-import matplotlib.pyplot as plt
-import matplotlib.cm as cmap
+import numpy as np
+import scipy.integrate
 
-output = crossflow_hx({'O2':5, 'CO2': 92, 'H2O': 3, 'CH4':0}, 0.3, 1100, 1500000, 
-                      1, 373, 100000, 
-                      0.001, 0.001, 0.001, 0.002, 
-                      1000, 2000)
+class crossflow_hx(object):
+    def __init__(self, fuel_in, steam_in, dims):
+        self.fuel_in = fuel_in
+        #fuel should be a list of [[fuel composition], fuel mass flow rate, fuel temperature in K, fuel pressure in Pa]
+        self.steam_in = steam_in
+        #steam should be a list of [[steam composition], steam mass flow rate, steam temperature in K, steam pressure in Pa]
+        self.dims = dims
+        #dimensions are [fuel channel height, fuel channel width, steam channel height, steam channel width, number fuel channels, number steam channels, will thicknesses for channels]
+        
+        #calculate dimensions needed for basic calculations
+        self.fuel_cs = self.dims[0]*self.dims[1]
+        self.steam_cs = self.dims[2]*self.dims[3]
+        self.fuel_dh = 2*self.dims[0]*self.dims[1]/(self.dims[0]+self.dims[1])
+        self.steam_dh = 2*self.dims[2]*self.dims[3]/(self.dims[2]+self.dims[3])
+        self.hx_area = self.dims[1]*self.dims[3]
+        
+        #set up initial cantera fluids - gri30 good for combustion of natural gas
+        #not setting up initial fluid conditions here
+        self.fuel = ct.Solution('gri30.xml')
+        self.steam = ct.Solution('gri30.xml')
+        self.fuel.transport_model = 'Mix'
+        self.steam.transport_model = 'Mix'
+           
+        """
+        set up inital arrays to reserve memory
+        needed arrays are temperature, pressure, density, velocity, viscosity, 
+        reynolds number, specific heat capacity, thermal conductivity, 
+        prandtl number, nusselt number, convective heat transfer coefficient, 
+        overall heat transfer coefficient, total heat transfer, z for hx calcs length
+        """
+        
+        self.fuel_T = self.emptyarray(self.dims[4], self.dims[5], 1)
+        self.steam_T = self.emptyarray(self.dims[4], self.dims[5], 2)
+        self.fuel_P = self.emptyarray(self.dims[4], self.dims[5], 1)
+        self.steam_P = self.emptyarray(self.dims[4], self.dims[5], 2)
+        self.fuel_rho = self.emptyarray(self.dims[4], self.dims[5], 1)
+        self.steam_rho = self.emptyarray(self.dims[4], self.dims[5], 2)
+        self.fuel_u = self.emptyarray(self.dims[4], self.dims[5], 1)
+        self.steam_u = self.emptyarray(self.dims[4], self.dims[5], 2)
+        self.fuel_mu = self.emptyarray(self.dims[4], self.dims[5], 1)
+        self.steam_mu = self.emptyarray(self.dims[4], self.dims[5], 2)
+        self.fuel_Re = self.emptyarray(self.dims[4], self.dims[5], 1)
+        self.steam_Re = self.emptyarray(self.dims[4], self.dims[5], 2)
+        self.fuel_cp = self.emptyarray(self.dims[4], self.dims[5], 1)
+        self.steam_cp = self.emptyarray(self.dims[4], self.dims[5], 2)
+        self.fuel_k = self.emptyarray(self.dims[4], self.dims[5], 1)
+        self.steam_k = self.emptyarray(self.dims[4], self.dims[5], 2)
+        self.fuel_Pr = self.emptyarray(self.dims[4], self.dims[5], 1)
+        self.steam_Pr = self.emptyarray(self.dims[4], self.dims[5], 2)
+        self.fuel_Nu = self.emptyarray(self.dims[4], self.dims[5], 1)
+        self.steam_Nu = self.emptyarray(self.dims[4], self.dims[5], 2)
+        self.fuel_h = self.emptyarray(self.dims[4], self.dims[5], 1)
+        self.steam_h = self.emptyarray(self.dims[4], self.dims[5], 2)
+        self.U = self.emptyarray(self.dims[4], self.dims[5], 1)
+        self.Q = self.emptyarray(self.dims[4], self.dims[5], 1)
+        
+        self.fuel_z = np.linspace(start = 0, stop = self.dims[4]*(self.dims[3] + self.dims[6]) - self.dims[6], num = self.dims[4] + 1)
+        self.steam_z = np.linspace(start = 0, stop = self.dims[5]*(self.dims[1] + self.dims[6]) - self.dims[6], num = self.dims[5] + 1)
+        
+    def solvehx(self):
+        #set initial fluid conditions and arrays
+        self.fuel.TPX = self.fuel_in[2], self.fuel_in[3], self.fuel_in[0]
+        self.steam.TPX = self.steam_in[2], self.steam_in[3], self.steam_in[0]
+        
+        #ignore friction for now on pressure. assume no gas-phase reactions
+        self.fuel_T[:, 0] = self.fuel_in[2]
+        self.fuel_P[:, :] = self.fuel_in[3]
+        self.steam_T[0, :] = self.steam_in[2]
+        self.steam_P[:, :] = self.steam_in[3]
+        
+        self.fuel_rho[:, 0] = self.fuel.density
+        self.steam_rho[0, :] = self.steam.density
+        self.fuel_u[:, 0] = self.fuel_in[1]/(self.fuel.density*self.dims[4]*self.fuel_cs)
+        self.steam_u[0, :] = self.steam_in[1]/(self.steam.density*self.dims[5]*self.steam_cs)
+        self.fuel_mu[:, 0] = self.fuel.viscosity
+        self.steam_mu[0, :] = self.steam.viscosity
+        self.fuel_Re[:, 0] = self.reynolds(self.fuel.density, self.fuel_u[0, 0], self.fuel_dh, self.fuel.viscosity)
+        self.steam_Re[0, :] = self.reynolds(self.steam.density, self.steam_u[0, 0], self.steam_dh, self.steam.viscosity)
+        self.fuel_cp[:, 0] = self.fuel.cp_mass
+        self.steam_cp[0, :] = self.steam.cp_mass
+        self.fuel_k[:, 0] = self.fuel.thermal_conductivity
+        self.steam_k[0, :] = self.steam.thermal_conductivity
+        self.fuel_Pr[:, 0] = self.fuel_mu[0, 0]*self.fuel_cp[0, 0]/self.fuel_k[0, 0]
+        self.steam_Pr[0, :] = self.steam_mu[0, 0]*self.steam_cp[0, 0]/self.steam_k[0, 0]
+        
+        #Muzychka & Yovanovich - combined entry region for small z*
+        self.fuel_Nu[:, 0] = self.entryNuDh(0, self.fuel_dh, self.fuel_Re[0, 0], self.fuel_Pr[0, 0])
+        self.steam_Nu[0, :] = self.entryNuDh(0, self.steam_dh, self.steam_Re[0, 0], self.steam_Pr[0, 0])
+        self.fuel_h[:, 0] = self.fuel_Nu[0, 0] * self.fuel_k[0, 0]/self.fuel_dh
+        self.steam_h[0, :] = self.steam_Nu[0, 0] * self.steam_k[0, 0]/self.steam_dh
+                
+        #now iterate through and solve for everything
+        for j in range(0, self.dims[5]):
+            for i in range(0, self.dims[4]):
+                #calculate heat tranfer coefficient and total heat transfer
+                self.U[i, j] = 1/(1/self.fuel_h[i, j] + 1/self.steam_h[i, j] + 0.001/45)
+                self.Q[i, j] = self.U[i, j]*self.hx_area*(self.fuel_T[i, j] - self.steam_T[i, j])
+                self.fuel_T[i, j+1] = self.fuel_T[i, j] - self.Q[i, j]/(self.fuel_rho[i, j]*self.fuel_u[i, j]*self.fuel_cp[i, j]*self.fuel_cs)
+                self.steam_T[i+1, j] = self.steam_T[i, j] + self.Q[i, j]/(self.steam_rho[i, j]*self.steam_u[i, j]*self.steam_cp[i, j]*self.steam_cs)
+                
+                #add momentum conservation here later
 
-vmin = min(np.min(output[0]), np.min(output[1]))
-vmax = max(np.max(output[0]), np.max(output[1]))
+                #update temperature and pressure for new cells
+                self.fuel.TP = self.fuel_T[i, j+1], self.fuel_P[i, j+1]
+                self.steam.TP = self.steam_T[i+1, j], self.steam_P[i+1, j]
+        
+                #update thermophysical and transport properties for new conditions
+                self.fuel_rho[i, j+1] = self.fuel.density
+                self.steam_rho[i+1, j] = self.steam.density
+                self.fuel_u[i, j+1] = self.fuel_u[i, j]*self.fuel_rho[i, j+1]/self.fuel_rho[i, j]
+                self.steam_u[i+1, j] = self.steam_u[i, j]*self.steam_rho[i+1, j]/self.steam_rho[i, j]
+                self.fuel_mu[i, j+1] = self.fuel.viscosity
+                self.steam_mu[i+1, j] = self.steam.viscosity
+                self.fuel_cp[i, j+1] = self.fuel.cp_mass
+                self.steam_cp[i+1, j] = self.steam.cp_mass
+                self.fuel_k[i, j+1] = self.fuel.thermal_conductivity
+                self.steam_k[i+1, j] = self.steam.thermal_conductivity
+                self.fuel_Pr[i, j+1] = self.fuel_mu[i, j+1]*self.fuel_cp[i, j+1]/self.fuel_k[i, j+1]
+                self.steam_Pr[i+1, j] = self.steam_mu[i+1, j]*self.steam_cp[i+1, j]/self.steam_k[i+1, j]
+                
+                self.fuel_Re[i, j+1] = self.reynolds(self.fuel_rho[i, j+1], self.fuel_u[i, j+1], self.fuel_dh, self.fuel_mu[i, j+1])
+                self.steam_Re[i+1, j] = self.reynolds(self.steam_rho[i+1, j], self.steam_u[i+1, j], self.steam_dh, self.steam_mu[i+1, j])
+                
+                self.fuel_Nu[i, j+1] = self.entryNuDh(self.fuel_z[j+1], self.fuel_dh, self.fuel_Re[i, j+1], self.fuel_Pr[i, j+1])
+                self.steam_Nu[i+1, j] = self.entryNuDh(self.steam_z[i+1], self.steam_dh, self.steam_Re[i+1, j], self.steam_Pr[i+1, j])
+                
+                self.fuel_h[i, j+1] = self.fuel_Nu[i, j+1]*self.fuel_k[i, j+1]/self.fuel_dh
+                self.steam_h[i+1, j] = self.steam_Nu[i+1, j]*self.steam_k[i+1, j]/self.steam_dh
+                        
+        #set up variables to return
+        self.fuel = [self.fuel_T[:, :], self.fuel_P[:, :]]
+        self.steam = [self.steam_T[:, :], self.steam_P[:, :]]
+        
+        return(self.fuel, self.steam)
+    
+    def emptyarray(self, dim1, dim2, direction):
+        #take number of channels and if the array should have an extra row or column
+        #extra column is for fuel channel initialization, and extra row is for steam channel
+        if direction == 1:
+            narrow = 1
+            wide = 0
+        elif direction == 2:
+            narrow = 0
+            wide = 1
+        empty = np.empty(shape = [dim1+1*wide, dim2+1*narrow], 
+                          dtype = float)
+        empty[:, :] = 0
+        return(empty) 
+        
+    def reynolds(self, density, velocity, diameter, viscosity):
+        #basic reynolds number calculation
+        re = density*velocity*diameter/viscosity
+        return(re)
+        
+    def entryNuDh(self, z, dh, Re, Pr):
+        #Muzychka & Yovanovich, universal wall temperature nusselt number for combined entry region
+        #there is a more in-depth correlation proposed in 10.1115/1.1643752#
+        C4 = 1
+        fPr = (0.564)/(1+(1.664*Pr**(1/6))**(9/2))**(2/9)
+        if z == 0:
+            zstar = 0.001 #initial assumption for this can break the heat exchanger?
+        else:
+            zstar = z/(dh*Re*Pr)
+        Nu = C4*fPr/(zstar**0.5)
+        return(Nu)
 
-fig, (fuelplot, steamplot) = plt.subplots(1, 2, sharey = True, sharex = True)
 
-fuelplot = sns.heatmap(output[0], cmap = cmap.hot, cbar = False, 
-                       ax = fuelplot, square = True, 
-                       xticklabels = 200, yticklabels = 200,
-                       vmin = vmin, vmax = vmax)
+fuel = [{'O2':5, 'CO2':92, 'H2O':3, 'CH4':0}, 0.0001, 800, 150000]
+steam = [{'H2O': 100}, 0.001, 400, 100000]
+dimensions = [0.001, 0.001, 0.01, 0.01, 50, 50, 0.0005]
 
-steamplot = sns.heatmap(output[1], cmap = cmap.hot, cbar = False, 
-                        ax = steamplot, square = True, 
-                        xticklabels = 200, yticklabels = 200,
-                        )
-plt.show()
+hx1 = crossflow_hx(fuel, steam, dimensions)
 
+fuelout, steamout = hx1.solvehx()
 
-#fig, axs = plt.subplots(2)
-
-#fuel = plt.imshow(output[0], cmap = cmap.hot)
-#steam = plt.imshow(output[1], cmap = cmap.hot)
-
-#axs[0].plot(fuel)
-#axs[1].plot(steam)
-
-#plt.plot()
-#plt.clim(650, 800)
-#plt.colorbar()
-#plt.show()
