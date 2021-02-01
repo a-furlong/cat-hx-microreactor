@@ -16,18 +16,53 @@ class crossflow_hx(object):
     
     Parameters
     -----
-    fuel_in: list
-        stream composition [mol%], mass flow rate [kg/s], 
-        gas temperature [K] and gas pressure [Pa]
+    fuel_in : list of four elements
+        1. fuel composition, Cantera library of compositions, units of mol%
+        2. mass flow rate through fuel plate, units of kg/s 
+        3. fuel inlet temperature, units K        
+        4. fuel inlet absolute pressure, units of Pa
     
-    utility_in: list 
-        stream composition [mol%], mass flow rate [kg/s], 
-        gas temperature [K] and gas pressure [Pa]
+    utility_in : list of four elements
+        1. utility composition, Cantera library of compositions, units of mol%        
+        2. mass flow rate through utility plate, units of kg/s         
+        3. utility inlet temperature, units K        
+        4. utility inlet absolute pressure, units of Pa
+        
+    dims : list of five elements
+        1. fuel channel diameter, units of m
+        2. utility channel diameter [m], units of m
+        3. number of fuel channels, dimensionless
+        4. number of utility channels, dimensionless
+        5. wall thickness between channels, units of m
+        
+        
+    Returns
+    -----
+    solve_hx method : Returns two arrays
+        array1 : [fuel temperature profile, fuel pressure profile]
+            fuel temperature profile: cell-by-cell array with inlet shown in 
+            column 0, units of K
+            
+            fuel pressure profile: cell-by-cell array with inlet shown in 
+            column 0, units of Pa
+        array2 : [utility temperature profile, utility pressure profile]
+            fuel temperature profile: cell-by-cell array with inlet shown in 
+            row 0, units of K
+            
+            fuel pressure profile: cell-by-cell array with inlet shown in 
+            row 0, units of Pa
+            
+    transientHX method : For use with an implicit ODE solver
     
-    dims: list
-        fuel channel diameter [m], utility channel diameter [m],
-        number of fuel channels [-], number of utility channels [m], 
-        wall thickness between channels [m]
+    Reference
+    -----
+    See other methods in class.
+    
+    Applicability
+    -----
+    Applicable for laminar flow (Re < 2300).
+    
+    Not suitable for use beyond approximately ideal conditions.
             
     """
     
@@ -82,6 +117,25 @@ class crossflow_hx(object):
         self.utility_lplus, self.utility_f = map(np.copy, [self.emptyarray(self.dims[2], self.dims[3], 2)]*2)
         
     def emptyarray(self, dim1, dim2, direction):
+        """
+        Method for producing an empty array with either an additional row 
+        or column for an initial condition.
+
+        Parameters
+        ----------
+        dim1 : int
+            Number of rows in the array
+        dim2 : int
+            Number of columns in the array
+        direction : int with value 1 or 2
+            Add an additional row (1) or column (2)
+
+        Returns
+        ----------
+        empty : array
+            An array of zeros with either an additional row or column
+
+        """
         #take number of channels and if the array should have an extra row or column
         #extra column is for fuel channel initialization, and extra row is for utility channel
         if direction == 1:
@@ -94,11 +148,68 @@ class crossflow_hx(object):
         return(empty)
         
     def reynolds(self, density, velocity, char_len, viscosity):
+        """
+        Function to evaluate the Reynolds number for the given fluid and geometry
+
+        Parameters
+        ----------
+        density : Float
+            fluid density, units of kg m-3
+        velocity : Float
+            fluid velocity, units of m s-1
+        char_len : Float
+            characteristic dimension for fluid, units of m
+        viscosity : Float
+            fluid viscosity, units of kg m-1 s-1
+
+        Returns
+        -------
+        re : Float
+            Reynolds number, dimensionless
+
+        """
         #basic reynolds number calculation
         re = density*velocity*char_len/viscosity
         return(re)
 
     def entryNu(self, z, Re, Pr, f, eps, sqrtA):
+        """
+        Function to evaluate the Nusselt number for developing laminar flow.
+
+        Parameters
+        ----------
+        z : Float
+            axial position, units of m
+        Re : Float
+            Reynolds number, dimensionless
+        Pr : Float
+            Prandtl number, dimensionless
+        f : Float
+            Laminar flow developing region friction factor, dimensionless. 
+            Given by devflow_friction method.
+        eps : Float
+            Aspect ratio, dimensionless
+        sqrtA : Float
+            Sqrt flow area, units of m
+
+        Returns
+        -------
+        Nu : Float
+            Nusselt number for the location in the heat exchanger, dimensionless
+
+        Reference
+        ------
+        Muzychka, Y. S., & Yovanovich, M. M. (2004). Laminar Forced Convection 
+        Heat Transfer in the Combined Entry Region of Non-Circular Ducts. 
+        Journal of Heat Transfer, 126(1), 54–61. 
+        https://doi.org/10.1115/1.1643752
+
+        
+        Applicability
+        --------
+        Applicanble for laminar flow in the developing region. Approximately 
+        suitable for fully developed laminar flow.
+        """
         #Muzychka & Yovanovich
         C1 = 3.24
         C2 = 1
@@ -116,11 +227,69 @@ class crossflow_hx(object):
         return(Nu)
 
     def lplus(self, L, ReSqrtA, sqrtA):
+        """
+        Function to evaluate the dimensionless duct length
+
+        Parameters
+        ----------
+        L : Float
+            Axial postion, units of m
+        ReSqrtA : Float
+            Reynolds number with sqrt channel area as the characteristic 
+            dimension, units of m
+        sqrtA : Float
+            Sqrt of channel flow area, units of m
+
+        Returns
+        -------
+        lplus : Float
+            Dimensionless duct length, dimensionless
+            
+        Reference
+        -------
+        Muzychka, Y. S., & Yovanovich, M. M. (2009). Pressure Drop in Laminar 
+        Developing Flow in Noncircular Ducts: A Scaling and Modeling Approach. 
+        Journal of Fluids Engineering, 131(11). 
+        https://doi.org/10.1115/1.4000377
+
+
+        """
         #Muzychka & Yovanovich
         lplus = L/(sqrtA*ReSqrtA)
         return(lplus)
         
     def devflow_friction(self, lplus, eps, ReSqrtA):
+        """
+        Evaluate the friction factor for developing laminar flow
+
+        Parameters
+        ----------
+        lplus : Float
+            Dimensionless duct length, dimensionless. Given by lplus method.
+        eps : Float
+            Aspect ratio, dimensionless.
+        ReSqrtA : Float
+            Reynolds number with characteristic length of sqrt flow area.
+            Dimensionless.
+
+        Returns
+        -------
+        f : Float
+            Fanning friction factor, dimensionless.
+            
+        Reference
+        -----
+        Muzychka, Y. S., & Yovanovich, M. M. (2009). Pressure Drop in Laminar 
+        Developing Flow in Noncircular Ducts: A Scaling and Modeling Approach. 
+        Journal of Fluids Engineering, 131(11). 
+        https://doi.org/10.1115/1.4000377
+
+        Applicability
+        -----
+        Applicanble for laminar flow in the developing region. Approximately 
+        suitable for fully developed laminar flow.
+
+        """
         #developing flow friction factor - give a minimum length to prevent divide by 0 errors
         n = 1.97 #1.97 - 2 seem to be the right range for a semicircle
         if lplus == 0:
@@ -129,6 +298,36 @@ class crossflow_hx(object):
         return(f)
     
     def fluid_properties_fuel(self, T, P):
+        """
+        Use Cantera to evaluate fluid properties for given conditions. 
+        Uses the fuel gas object to reduce composition updates.
+
+        Parameters
+        ----------
+        T : Float
+            Fuel temperature, units of K.
+        P : Float
+            Fuel pressure, units of Pa.
+
+        Returns
+        -------
+        rho : Float
+            Fuel density, units of kg m-3
+        mu : Float
+            Fuel viscosity, units of kg m-1 s-1
+        cp : Float
+            Fuel specific heat capacity, mass basis, units of J kg-1 K-1
+        k : Float
+            Fuel thermal conducivity, units of W m-1 K-1
+        Pr : Float
+            Fuel Prandtl number, dimensionless
+            
+        Applicability
+        -----
+        Applicable for near-ideal conditions. Cantera using GRI-Mech 3.0 which
+        is an ideal-gas solver.
+
+        """
         self.fuel.TP = T, P                
         rho = self.fuel.density
         mu = self.fuel.viscosity
@@ -138,6 +337,36 @@ class crossflow_hx(object):
         return(rho, mu, cp, k, Pr)
     
     def fluid_properties_utility(self, T, P):
+        """
+        Use Cantera to evaluate fluid properties for given conditions. 
+        Uses the utility gas object to reduce composition updates.
+
+        Parameters
+        ----------
+        T : Float
+            Utility temperature, units of K.
+        P : Float
+            Utility pressure, units of Pa.
+
+        Returns
+        -------
+        rho : Float
+            Utility density, units of kg m-3
+        mu : Float
+            Utility viscosity, units of kg m-1 s-1
+        cp : Float
+            Utility specific heat capacity, mass basis, units of J kg-1 K-1
+        k : Float
+            Utility thermal conducivity, units of W m-1 K-1
+        Pr : Float
+            Utility Prandtl number, dimensionless
+            
+        Applicability
+        -----
+        Applicable for near-ideal conditions. Cantera using GRI-Mech 3.0 which
+        is an ideal-gas solver.
+
+        """
         self.utility.TP = T, P
         rho = self.utility.density
         mu = self.utility.viscosity
@@ -147,6 +376,23 @@ class crossflow_hx(object):
         return(rho, mu, cp, k, Pr)
     
     def update_properties(self, T_fuel, T_utility):
+        """
+        Update arrays of properties and convective heat transfer correlations 
+        for new temperature profiles. For use in the transient solver. 
+        Assuming pressures are constant from the steady-state model.
+
+        Parameters
+        ----------
+        T_fuel : Array
+            Fuel temperatures, float, units of K.
+        T_utility : Array
+            Utility temperatures, float, units of K.
+
+        Returns
+        -------
+        None.
+
+        """
         for j in range(self.dims[3]):
             for i in range(self.dims[2]):
                 self.fuel_rho[i, j], self.fuel_mu[i, j], self.fuel_cp[i, j],self.fuel_k[i, j], self.fuel_Pr[i, j] = self.fluid_properties_fuel(T_fuel[i, j], self.fuel_P[i, j])
@@ -174,12 +420,53 @@ class crossflow_hx(object):
                 self.U[i, j] = 1/(1/self.fuel_h[i, j] + 1/self.utility_h[i, j] + 0.0005/45)  
                 
     def unwrap_T(self, T_vector):
+        """
+        Used to manipulate vector of fuel and utility temperatures profiles
+        into two arrays. Manipulates data into easily iterable form after 
+        passing through the 1-dimensional ODE solver.
+
+        Parameters
+        ----------
+        T_vector : List
+            Temperature profile produced by ODE solver, units of K.
+
+        Returns
+        -------
+        initial_fuel_Temps : Array
+            2-Dimensional fuel plate temperature profile, with column 0 as the 
+            inlet. Units of K.
+        initial_utility_Temps : Array
+            2-Dimensional utility plate temperature profile, with row 0 as the 
+            inlet. Units of K.
+
+        """
         initial_fuel_Temps = T_vector[0:int(self.dims[2]*self.dims[3])].reshape(int(self.dims[2]), int(self.dims[3]))
         initial_utility_Temps = T_vector[int(self.dims[2]*self.dims[3]):].reshape(int(self.dims[2]), int(self.dims[3]))
         
         return initial_fuel_Temps, initial_utility_Temps
         
     def solvehx(self):
+        """
+        Method to solve steady-state temperature and pressure profiles for fuel
+        and utility channels. Only solves when called. 
+
+        Returns
+        -------
+        fuelout : Array
+            element1: Temperature profile for fuel plate, with inlet in column 
+            0 and outlet in column n. Units of K.
+            
+            element2: Pressure profile for fuel plate, with inlet in column 0 
+            and outlet in column n. Units of Pa abs.
+        
+        utilityout : Array
+            element1: Temperature profile for utility plate, with inlet in 
+            row 0 and outlet in row n. Units of K.
+            
+            element2: Pressure profile for utility plate, with inlet in row 0 
+            and outlet in row n. Units of Pa abs.
+                
+        """
         #set initial fluid conditions and arrays
         self.fuel.TPY = self.fuel_in[2], self.fuel_in[3], self.fuel_in[0]
         self.utility.TPY = self.utility_in[2], self.utility_in[3], self.utility_in[0]
@@ -221,7 +508,6 @@ class crossflow_hx(object):
         self.fuel_h[:, 0] = self.fuel_Nu[0, 0] * self.fuel_k[0, 0]/self.fuel_sqrtA
         self.utility_h[0, :] = self.utility_Nu[0, 0] * self.utility_k[0, 0]/self.utility_sqrtA
         
-                
         #now iterate through and solve for everything
         for j in range(0, self.dims[3]):
             for i in range(0, self.dims[2]):
@@ -273,7 +559,29 @@ class crossflow_hx(object):
         self.utilityout = [self.utility_T[:, :], self.utility_P[:, :]]
         return(self.fuelout, self.utilityout)   
     
-    def transientHX(self, t, T):       
+    def transientHX(self, t, T):
+        """
+        Method to model the transient temperature response of the PCHE. 
+        Requires a 1-dimensional input.
+
+        Parameters
+        ----------
+        t : Float
+            Time points, units of s
+        T : List (floats)
+            Temperature profiles for the fuel and utility channels, units of K.
+            Produced by concatenating lists of temperatures produced with the 
+            ravel method. 
+            
+            E.g. np.concatenate([fuelinitials.ravel(), utilityinitials.ravel()])
+
+        Returns
+        -------
+        dTdt : List (floats)
+            Differenital temperature profile, for use in an ODE solver. Units
+            of K s-1.
+
+        """
         rows = int(self.dims[2])
         columns = int(self.dims[3])
         
@@ -310,17 +618,13 @@ class crossflow_hx(object):
         return dTdt
 
 #set input dimensions and streams    
-fuelin = [{'O2':5, 'CO2':92, 'H2O':3, 'CH4':0}, 0.001, 1200, 1500000]
-utilityin = [{'H2O': 100}, 0.0005, 500, 1000000]
+fuelin = [{'O2':5, 'CO2':92, 'H2O':3, 'CH4':0}, 0.001, 1000, 1500000]
+utilityin = [{'H2O': 100}, 0.0005, 650, 1000000]
 dimensions = [0.002, 0.001, 25, 50, 0.0002]
 
 #solve steady state model
 hx1 = crossflow_hx(fuelin, utilityin, dimensions)
 fuelout, utilityout = hx1.solvehx()
-
-#only take temperature profiles
-fuelout = fuelout[0]
-utilityout = utilityout[0]
 
 #solve transient model - grab initial feed temperatures and use as input temperature
 fuelinitials = fuelin[2]*np.ones(shape = (dimensions[2], dimensions[3]))
