@@ -9,6 +9,7 @@ import cantera as ct
 import numpy as np
 import math
 from scipy.integrate import solve_ivp
+import matplotlib.pyplot as plt
 
 class crossflow_hx(object):
     """
@@ -88,11 +89,10 @@ class crossflow_hx(object):
             
     """
     
-    def __init__(self, reactant_in, utility_in, fuel_in, dims):
+    def __init__(self, reactant_in, utility_in, dims):
         #list of [[stream composition], mass flow [kg/s], Temp [K], Pressure [Pa abs]]
         self.reactant_in = reactant_in
         self.utility_in = utility_in
-        self.fuel_in = fuel_in
         #dimensions are [reactant channel diameter, utility channel diameter, number reactant channels, number utility channels, wall thicknesses for channels]
         self.dims = dims
 
@@ -465,7 +465,7 @@ class crossflow_hx(object):
         Pr = mu*cp/k
         return(rho, mu, cp, k, Pr)
     
-    def update_properties(self, T_reactant, T_utility, T_fuel):
+    def update_properties(self, T_reactant, T_utility):
         """
         Update arrays of properties and convective heat transfer correlations 
         for new temperature profiles. For use in the transient solver. 
@@ -487,15 +487,12 @@ class crossflow_hx(object):
             for i in range(self.dims[2]):
                 self.reactant_rho[i, j], self.reactant_mu[i, j], self.reactant_cp[i, j],self.reactant_k[i, j], self.reactant_Pr[i, j] = self.fluid_properties_reactant(T_reactant[i, j], self.reactant_P[i, j])
                 self.utility_rho[i, j], self.utility_mu[i, j], self.utility_cp[i, j],self.utility_k[i, j], self.utility_Pr[i, j] = self.fluid_properties_utility(T_utility[i, j], self.utility_P[i, j])
-                self.fuel_rho[i, j], self.fuel_mu[i, j], self.fuel_cp[i, j],self.fuel_k[i, j], self.fuel_Pr[i, j] = self.fluid_properties_fuel(T_fuel[i, j], self.fuel_P[i, j])
 
                 self.reactant_u[i, j] = self.reactant_u0*self.reactant_rho0/self.reactant_rho[i, j]
                 self.utility_u[i, j] = self.utility_u0*self.utility_rho0/self.utility_rho[i, j]
-                self.fuel_u[i, j] = self.fuel_u0*self.fuel_rho0/self.fuel_rho[i, j]
 
                 self.reactant_Re[i, j] = self.reynolds(self.reactant_rho[i, j], self.reactant_u[i, j], self.reactant_sqrtA, self.reactant_mu[i, j])
                 self.utility_Re[i, j] = self.reynolds(self.utility_rho[i, j], self.utility_u[i, j], self.utility_sqrtA, self.utility_mu[i, j])
-                self.fuel_Re[i, j] = self.reynolds(self.fuel_rho[i, j], self.fuel_u[i, j], self.reactant_sqrtA, self.fuel_mu[i, j])
 
                 
                 if self.reactant_Re[i, j] < 2300: 
@@ -509,18 +506,10 @@ class crossflow_hx(object):
                 else:
                     #self.utility_Nu[i, j] = 0.023*self.utility_Re[i, j]**0.8*self.utility_Pr[i, j]**0.4
                     self.utility_Nu[i, j] = (self.utility_f[i, j]*(self.utility_Re[i, j]-1000)*self.utility_Pr[i, j])/(1+12.7*self.utility_f[i, j]**0.5*(self.utility_Pr[i, j]**(2/3)-1))
-                
-                if self.fuel_Re[i, j] < 2300: 
-                    self.fuel_Nu[i, j] = self.entryNu(self.reactant_z[j], self.fuel_Re[i, j], self.fuel_Pr[i, j], self.fuel_f[i, j], self.reactant_eps, self.reactant_sqrtA)
-                else:
-                    #self.fuel_Nu[i, j] = 0.023*self.fuel_Re[i, j]**0.8*self.fuel_Pr[i, j]**0.3
-                    self.fuel_Nu[i, j] = (self.fuel_f[i, j]*(self.fuel_Re[i, j]-1000)*self.fuel_Pr[i, j])/(1+12.7*self.fuel_f[i, j]**0.5*(self.fuel_Pr[i, j]**(2/3)-1))
-                
+           
                 self.reactant_h[i, j] = self.reactant_Nu[i, j]*self.reactant_k[i, j]/self.reactant_sqrtA
                 self.utility_h[i, j] = self.utility_Nu[i, j]*self.utility_k[i, j]/self.utility_sqrtA
-                self.fuel_h[i, j] = self.fuel_Nu[i, j]*self.fuel_k[i, j]/self.reactant_sqrtA
-                
-                
+                        
     def unwrap_T(self, T_vector):
         """
         Used to manipulate vector of reactant and utility temperatures profiles
@@ -544,12 +533,10 @@ class crossflow_hx(object):
         """
         initial_reactant_Temps = T_vector[0:int(self.dims[2]*self.dims[3])].reshape(int(self.dims[2]), int(self.dims[3]))
         initial_utility_Temps = T_vector[int(self.dims[2]*self.dims[3]):2*int(self.dims[2]*self.dims[3])].reshape(int(self.dims[2]), int(self.dims[3]))
-        initial_fuel_Temps = T_vector[2*int(self.dims[2]*self.dims[3]):3*int(self.dims[2]*self.dims[3])].reshape(int(self.dims[2]), int(self.dims[3]))
-        initial_reactantPlate_Temps = T_vector[3*int(self.dims[2]*self.dims[3]):4*int(self.dims[2]*self.dims[3])].reshape(int(self.dims[2]), int(self.dims[3]))
-        initial_utilityPlate_Temps = T_vector[4*int(self.dims[2]*self.dims[3]):5*int(self.dims[2]*self.dims[3])].reshape(int(self.dims[2]), int(self.dims[3]))
-        initial_fuelPlate_Temps = T_vector[5*int(self.dims[2]*self.dims[3]):6*int(self.dims[2]*self.dims[3])].reshape(int(self.dims[2]), int(self.dims[3]))
+        initial_reactantPlate_Temps = T_vector[2*int(self.dims[2]*self.dims[3]):3*int(self.dims[2]*self.dims[3])].reshape(int(self.dims[2]), int(self.dims[3]))
+        initial_utilityPlate_Temps = T_vector[3*int(self.dims[2]*self.dims[3]):4*int(self.dims[2]*self.dims[3])].reshape(int(self.dims[2]), int(self.dims[3]))
         
-        return initial_reactant_Temps, initial_utility_Temps, initial_fuel_Temps, initial_reactantPlate_Temps, initial_utilityPlate_Temps, initial_fuelPlate_Temps
+        return initial_reactant_Temps, initial_utility_Temps, initial_reactantPlate_Temps, initial_utilityPlate_Temps
         
     def solvehx(self):
         """
@@ -576,64 +563,50 @@ class crossflow_hx(object):
         #set initial fluid conditions and arrays
         self.reactant.TPY = self.reactant_in[2], self.reactant_in[3], self.reactant_in[0]
         self.utility.TPY = self.utility_in[2], self.utility_in[3], self.utility_in[0]
-        self.fuel.TPY = self.fuel_in[2], self.fuel_in[3], self.fuel_in[0]
         
         #set boundary conditions
         self.reactant_T[:, 0] = self.reactant_in[2]
         self.reactant_P[:, 0] = self.reactant_in[3]
         self.utility_T[0, :] = self.utility_in[2]
         self.utility_P[0, :] = self.utility_in[3]
-        self.fuel_T[:, 0] = self.fuel_in[2]
-        self.fuel_P[:, 0] = self.fuel_in[3]
         
         #set initial estimates for temperatures in the solid phase using arithmatic means
         #self.T_utilityPlate[0, :] = (self.utility_in[2] + self.reactant_in[2])/2
         #self.T_reactantPlate[:, 0] = (self.reactant_in[2] + self.fuel_in[2])/2
-        #self.T_fuelPlate[:, 0] = (self.reactant_in[2] + self.fuel_in[2])/2 #assuming mirrored structure
         self.T_utilityPlate[0, :] = (self.utility_in[2]*self.utility_in[1] + self.reactant_in[2]*self.reactant_in[1])/(self.utility_in[1]+self.reactant_in[1])
         self.T_reactantPlate[:, 0] = self.reactant_in[2]
-        #self.T_fuelPlate[:, 0] = (self.reactant_in[2]*self.reactant_in[1] + self.fuel_in[2]*self.fuel_in[1])/(self.reactant_in[1]+self.fuel_in[1])
-        self.T_fuelPlate[:, 0] = self.reactant_in[2]
         
         #use cantera to determine fluid properties
         self.reactant_rho[:, 0], self.reactant_mu[:, 0], self.reactant_cp[:, 0], self.reactant_k[:, 0], self.reactant_Pr[:, 0] = self.fluid_properties_reactant(self.reactant_in[2], self.reactant_in[3])
         self.utility_rho[0, :], self.utility_mu[0, :], self.utility_cp[0, :], self.utility_k[0, :], self.utility_Pr[0, :] = self.fluid_properties_utility(self.utility_in[2], self.utility_in[3])
-        self.fuel_rho[:, 0], self.fuel_mu[:, 0], self.fuel_cp[:, 0], self.fuel_k[:, 0], self.fuel_Pr[:, 0] = self.fluid_properties_fuel(self.fuel_in[2], self.fuel_in[3])
 
         #inlet velocity = mass flow rate in / density / # channels / channel cross section
         self.reactant_u[:, 0] = self.reactant_in[1]/(self.reactant_rho[0, 0]*self.dims[2]*self.reactant_cs)
         self.utility_u[0, :] = self.utility_in[1]/(self.utility.density*self.dims[3]*self.utility_cs)
-        self.fuel_u[:, 0] = self.fuel_in[1]/(self.fuel_rho[0, 0]*self.dims[2]*self.reactant_cs)
 
         #grab initial velocity and density to determine later velocity via continuity equation
         self.reactant_u0 = self.reactant_u[0, 0]    
         self.utility_u0 = self.utility_u[0, 0]
-        self.fuel_u0 = self.fuel_u[0, 0]    
         self.reactant_rho0 = self.reactant_rho[0, 0]
         self.utility_rho0 = self.utility_rho[0, 0]
-        self.fuel_rho0 = self.fuel_rho[0, 0]
 
         #maybe update this soon?
         self.reactant_Re[:, 0] = self.reynolds(self.reactant_rho[0, 0], self.reactant_u[0, 0], self.reactant_sqrtA, self.reactant_mu[0, 0])
         self.utility_Re[0, :] = self.reynolds(self.utility_rho[0, 0], self.utility_u[0, 0], self.utility_sqrtA, self.utility_mu[0, 0])
-        self.fuel_Re[:, 0] = self.reynolds(self.fuel_rho[0, 0], self.fuel_u[0, 0], self.reactant_sqrtA, self.fuel_mu[0, 0])
         
         #Muzychka & Yovanovich - entry region friction factor
         #L+ is 0 for the entry region
         self.reactant_f[:, 0] = self.devflow_friction(self.reactant_lplus[0, 0], self.reactant_eps, self.reactant_Re[0, 0])
         self.utility_f[0, :] = self.devflow_friction(self.utility_lplus[0, 0], self.utility_eps, self.utility_Re[0, 0])
-        self.fuel_f[:, 0] = self.devflow_friction(self.fuel_lplus[0, 0], self.reactant_eps, self.fuel_Re[0, 0])
 
         
         #Muzychka & Yovanovich - combined entry region for small z*
         self.reactant_Nu[:, 0] = self.entryNu(0, self.reactant_Re[0, 0], self.reactant_Pr[0, 0], self.reactant_f[0, 0], self.reactant_eps, self.reactant_sqrtA)
         self.utility_Nu[0, :] = self.entryNu(0, self.utility_Re[0, 0], self.utility_Pr[0, 0], self.utility_f[0, 0], self.utility_eps, self.utility_sqrtA)
-        self.fuel_Nu[:, 0] = self.entryNu(0, self.fuel_Re[0, 0], self.fuel_Pr[0, 0], self.fuel_f[0, 0], self.reactant_eps, self.reactant_sqrtA)
         
         #should this be sqrtA or dh?
         self.reactant_h[:, 0] = self.reactant_Nu[0, 0] * self.reactant_k[0, 0]/self.reactant_sqrtA
         self.utility_h[0, :] = self.utility_Nu[0, 0] * self.utility_k[0, 0]/self.utility_sqrtA
-        self.fuel_h[:, 0] = self.fuel_Nu[0, 0] * self.fuel_k[0, 0]/self.reactant_sqrtA
         
         #now iterate through and solve for everything
         for j in range(0, self.dims[3]):
@@ -642,9 +615,7 @@ class crossflow_hx(object):
                 self.Q_utilityFluid[i, j] = 0.2*(self.utility_h[i, j]*self.hx_area_uPuF*(self.T_utilityPlate[i, j] - self.utility_T[i, j]))
                 self.Q_utilityPlate[i, j] = 0.2*(-self.Q_utilityFluid[i, j] + self.metalk*self.hx_area_uPrP*(self.T_reactantPlate[i, j] - self.T_utilityPlate[i, j])/self.dims[5] + self.reactant_h[i, j]*self.hx_area_uPrF*(self.reactant_T[i, j] - self.T_utilityPlate[i, j]))
                 self.Q_reactantsFluid[i, j] = 0.2*(-self.reactant_h[i, j]*self.hx_area_uPrF*(self.reactant_T[i, j] - self.T_utilityPlate[i, j]) - self.reactant_h[i, j]*self.hx_area_rPrF*(self.reactant_T[i, j] - self.T_reactantPlate[i, j]))
-                self.Q_reactantsPlate[i, j] = 0.2*(self.reactant_h[i, j]*self.hx_area_rPrF*(self.reactant_T[i, j] - self.T_reactantPlate[i, j]) - self.fuel_h[i, j]*self.hx_area_rPfF*(self.T_reactantPlate[i, j] - self.fuel_T[i, j]) - self.metalk*self.hx_area_rPfP*(self.T_reactantPlate[i, j] - self.T_fuelPlate[i, j])/self.dims[5] - self.metalk*self.hx_area_uPrP*(self.T_reactantPlate[i, j] - self.T_utilityPlate[i, j])/self.dims[5])
-                self.Q_fuelFluid[i, j] = 0.2*(self.fuel_h[i, j]*self.hx_area_rPfF*(self.T_reactantPlate[i, j] - self.fuel_T[i, j]) - self.fuel_h[i, j]*self.hx_area_fPfF*(self.fuel_T[i, j] - self.T_fuelPlate[i, j]))
-                self.Q_fuelPlate[i, j] = 0.2*(self.fuel_h[i, j]*self.hx_area_fPfF*(self.fuel_T[i, j] - self.T_fuelPlate[i, j]) + self.metalk*self.hx_area_rPfP*(self.T_reactantPlate[i, j] - self.T_fuelPlate[i, j])/self.dims[5])
+                self.Q_reactantsPlate[i, j] = 0.2*(self.reactant_h[i, j]*self.hx_area_rPrF*(self.reactant_T[i, j] - self.T_reactantPlate[i, j]) - self.metalk*self.hx_area_uPrP*(self.T_reactantPlate[i, j] - self.T_utilityPlate[i, j])/self.dims[5])
                 #print(self.Q_utilityFluid[i, j] + self.Q_utilityPlate[i, j] + self.Q_reactantsFluid[i, j] + self.Q_reactantsPlate[i, j] + self.Q_fuelFluid[i, j] + self.Q_fuelPlate[i, j])
                 #totalQ = self.Q_utilityFluid[i, j] + self.Q_utilityPlate[i, j] + self.Q_reactantsFluid[i, j] + self.Q_reactantsPlate[i, j] + self.Q_fuelFluid[i, j] + self.Q_fuelPlate[i, j]
                 #print(totalQ)
@@ -654,37 +625,30 @@ class crossflow_hx(object):
                 #self.utility_T[i+1, j] = self.utility_T[i, j] + self.Q[i, j]/(self.utility_in[1]/self.dims[3]*self.utility_cp[i, j])
                 self.utility_T[i+1, j] = self.utility_T[i, j] + self.Q_utilityFluid[i, j]/(self.utility_in[1]/self.dims[3]*self.utility_cp[i, j])
                 self.reactant_T[i, j+1] = self.reactant_T[i, j] + self.Q_reactantsFluid[i, j]/(self.reactant_in[1]/self.dims[2]*self.reactant_cp[i, j])
-                self.fuel_T[i, j+1] = self.fuel_T[i, j] + self.Q_fuelFluid[i, j]/(self.fuel_in[1]/self.dims[2]*self.fuel_cp[i, j])
                 
-                self.T_fuelPlate[i, j+1] = self.T_fuelPlate[i, j] + self.Q_fuelPlate[i, j]/(self.metalRho*self.metalcp*self.Vcell_fuelplate)
                 self.T_utilityPlate[i+1, j] = self.T_utilityPlate[i, j] + self.Q_utilityPlate[i, j]/(self.metalRho*self.metalcp*self.Vcell_utilityPlate)
                 self.T_reactantPlate[i, j+1] = self.T_reactantPlate[i, j] + self.Q_reactantsPlate[i, j]/(self.metalRho*self.metalcp*self.Vcell_reactantPlate)
                 
                 #assuming incompressible flow given low velocity
                 self.reactant_P[i, j+1] = self.reactant_P[i, j] - 2*self.reactant_f[i, j] * (self.dims[1] + self.dims[4]) / self.reactant_dh *self.reactant_rho[i, j]*self.reactant_u[i, j]**2
                 self.utility_P[i+1, j] = self.utility_P[i, j] - 2*self.utility_f[i, j] * (self.dims[0] + self.dims[4]) / self.utility_dh *self.utility_rho[i, j]*self.utility_u[i, j]**2
-                self.fuel_P[i, j+1] = self.fuel_P[i, j] - 2*self.fuel_f[i, j] * (self.dims[1] + self.dims[4]) / self.reactant_dh *self.fuel_rho[i, j]*self.fuel_u[i, j]**2
 
         
                 #update thermophysical and transport properties for new conditions
                 self.reactant_rho[i, j+1], self.reactant_mu[i, j+1], self.reactant_cp[i, j+1],self.reactant_k[i, j+1], self.reactant_Pr[i, j+1] = self.fluid_properties_reactant(self.reactant_T[i, j+1], self.reactant_P[i, j+1])
                 self.utility_rho[i+1, j], self.utility_mu[i+1, j], self.utility_cp[i+1, j],self.utility_k[i+1, j], self.utility_Pr[i+1, j] = self.fluid_properties_utility(self.utility_T[i+1, j], self.utility_P[i+1, j])
-                self.fuel_rho[i, j+1], self.fuel_mu[i, j+1], self.fuel_cp[i, j+1],self.fuel_k[i, j+1], self.fuel_Pr[i, j+1] = self.fluid_properties_fuel(self.fuel_T[i, j+1], self.fuel_P[i, j+1])
 
                 
                 #update velocity
                 self.reactant_u[i, j+1] = self.reactant_u[i, j]*self.reactant_rho[i, j]/self.reactant_rho[i, j+1]
                 self.utility_u[i+1, j] = self.utility_u[i, j]*self.utility_rho[i, j]/self.utility_rho[i+1, j]
-                self.fuel_u[i, j+1] = self.fuel_u[i, j]*self.fuel_rho[i, j]/self.fuel_rho[i, j+1]
                 
                 self.reactant_Re[i, j+1] = self.reynolds(self.reactant_rho[i, j+1], self.reactant_u[i, j+1], self.reactant_sqrtA, self.reactant_mu[i, j+1])
                 self.utility_Re[i+1, j] = self.reynolds(self.utility_rho[i+1, j], self.utility_u[i+1, j], self.utility_sqrtA, self.utility_mu[i+1, j])
-                self.fuel_Re[i, j+1] = self.reynolds(self.fuel_rho[i, j+1], self.fuel_u[i, j+1], self.reactant_sqrtA, self.fuel_mu[i, j+1])
                 
                 #update lplus and friction factors
                 self.reactant_lplus[i, j+1] = self.lplus(self.reactant_z[j+1], self.reactant_Re[i, j+1], self.reactant_sqrtA)
                 self.utility_lplus[i+1, j] = self.lplus(self.utility_z[i+1], self.utility_Re[i+1, j], self.utility_sqrtA)
-                self.fuel_lplus[i, j+1] = self.lplus(self.reactant_z[j+1], self.fuel_Re[i, j+1], self.reactant_sqrtA)
                 
                 
                 if self.reactant_Re[i, j+1] < 2300:
@@ -696,12 +660,7 @@ class crossflow_hx(object):
                     self.utility_f[i+1, j] = self.devflow_friction(self.utility_lplus[i+1, j], self.utility_eps, self.utility_Re[i+1, j])
                 else:
                     self.utility_f[i+1, j] = (0.79*math.log(self.utility_Re[i+1, j])-1.64)**(-2)/8
-                
-                if self.fuel_Re[i, j+1] < 2300:
-                    self.fuel_f[i, j+1] = self.devflow_friction(self.fuel_lplus[i, j+1], self.reactant_eps, self.fuel_Re[i, j+1])
-                else:
-                    self.fuel_f[i, j+1] = (0.79*math.log(self.fuel_Re[i, j+1])-1.64)**(-2)/8
-                
+             
                 #determine developing region heat transfer coefficients
                 if self.reactant_Re[i, j+1] < 2300: 
                     self.reactant_Nu[i, j+1] = self.entryNu(self.reactant_z[j+1], self.reactant_Re[i, j+1], self.reactant_Pr[i, j+1], self.reactant_f[i, j+1], self.reactant_eps, self.reactant_sqrtA)
@@ -715,15 +674,9 @@ class crossflow_hx(object):
                     #self.utility_Nu[i+1, j] = 0.023*self.utility_Re[i+1, j]**0.8*self.utility_Pr[i+1, j]**0.4
                     self.utility_Nu[i+1, j] = (self.utility_f[i+1, j]*(self.utility_Re[i+1, j]-1000)*self.utility_Pr[i+1, j])/(1+12.7*self.utility_f[i+1, j]**0.5*(self.utility_Pr[i+1, j]**(2/3)-1))
 
-                if self.fuel_Re[i, j+1] < 2300: 
-                    self.fuel_Nu[i, j+1] = self.entryNu(self.reactant_z[j+1], self.fuel_Re[i, j+1], self.fuel_Pr[i, j+1], self.fuel_f[i, j+1], self.reactant_eps, self.reactant_sqrtA)
-                else:
-                    #self.fuel_Nu[i, j+1] = 0.023*self.fuel_Re[i, j+1]**0.8*self.fuel_Pr[i, j+1]**0.4
-                    self.fuel_Nu[i, j+1] = (self.fuel_f[i, j+1]*(self.fuel_Re[i, j+1]-1000)*self.fuel_Pr[i, j+1])/(1+12.7*self.fuel_f[i, j+1]**0.5*(self.fuel_Pr[i, j+1]**(2/3)-1))
-                
+
                 self.reactant_h[i, j+1] = self.reactant_Nu[i, j+1]*self.reactant_k[i, j+1]/self.reactant_sqrtA
                 self.utility_h[i+1, j] = self.utility_Nu[i+1, j]*self.utility_k[i+1, j]/self.utility_sqrtA
-                self.fuel_h[i, j+1] = self.fuel_Nu[i, j+1]*self.fuel_k[i, j+1]/self.reactant_sqrtA
                 #print(i, j, self.T_utilityPlate[i, j], self.fuel_P[i, j])
                 
                 #print(i, j, self.utility_T[i, j], self.T_utilityPlate[i, j], self.reactant_T[i, j], self.T_reactantPlate[i, j])
@@ -735,9 +688,7 @@ class crossflow_hx(object):
                         self.Q_utilityFluid[i, j] = 0.2*(self.utility_h[i, j]*self.hx_area_uPuF*(self.T_utilityPlate[i, j] - self.utility_T[i, j]))
                         self.Q_utilityPlate[i, j] = 0.2*(-self.Q_utilityFluid[i, j] + self.metalk*self.hx_area_uPrP*(self.T_reactantPlate[i, j] - self.T_utilityPlate[i, j])/self.dims[5] + self.reactant_h[i, j]*self.hx_area_uPrF*(self.reactant_T[i, j] - self.T_utilityPlate[i, j]))
                         self.Q_reactantsFluid[i, j] = 0.2*(-self.reactant_h[i, j]*self.hx_area_uPrF*(self.reactant_T[i, j] - self.T_utilityPlate[i, j]) - self.reactant_h[i, j]*self.hx_area_rPrF*(self.reactant_T[i, j] - self.T_reactantPlate[i, j]))
-                        self.Q_reactantsPlate[i, j] = 0.2*(self.reactant_h[i, j]*self.hx_area_rPrF*(self.reactant_T[i, j] - self.T_reactantPlate[i, j]) - self.fuel_h[i, j]*self.hx_area_rPfF*(self.T_reactantPlate[i, j] - self.fuel_T[i, j]) - self.metalk*self.hx_area_rPfP*(self.T_reactantPlate[i, j] - self.T_fuelPlate[i, j])/self.dims[5] - self.metalk*self.hx_area_uPrP*(self.T_reactantPlate[i, j] - self.T_utilityPlate[i, j])/self.dims[5])
-                        self.Q_fuelFluid[i, j] = 0.2*(self.fuel_h[i, j]*self.hx_area_rPfF*(self.T_reactantPlate[i, j] - self.fuel_T[i, j]) - self.fuel_h[i, j]*self.hx_area_fPfF*(self.fuel_T[i, j] - self.T_fuelPlate[i, j]))
-                        self.Q_fuelPlate[i, j] = 0.2*(self.fuel_h[i, j]*self.hx_area_fPfF*(self.fuel_T[i, j] - self.T_fuelPlate[i, j]) + self.metalk*self.hx_area_rPfP*(self.T_reactantPlate[i, j] - self.T_fuelPlate[i, j])/self.dims[5])
+                        self.Q_reactantsPlate[i, j] = 0.2*(self.reactant_h[i, j]*self.hx_area_rPrF*(self.reactant_T[i, j] - self.T_reactantPlate[i, j]) - self.metalk*self.hx_area_uPrP*(self.T_reactantPlate[i, j] - self.T_utilityPlate[i, j])/self.dims[5])
                         
                         #totalQ = self.Q_utilityFluid[i, j] + self.Q_utilityPlate[i, j] + self.Q_reactantsFluid[i, j] + self.Q_reactantsPlate[i, j] + self.Q_fuelFluid[i, j] + self.Q_fuelPlate[i, j]
                         #print(totalQ)
@@ -745,40 +696,32 @@ class crossflow_hx(object):
                         #use the mass flow rate through each channel instead of the velocity in each channel for the heat transferred
                         self.utility_T[i, j] = self.utility_T[i, j] + self.Q_utilityFluid[i, j]/(self.utility_in[1]/self.dims[3]*self.utility_cp[i, j])
                         self.reactant_T[i, j] = self.reactant_T[i, j] + self.Q_reactantsFluid[i, j]/(self.reactant_in[1]/self.dims[2]*self.reactant_cp[i, j])
-                        self.fuel_T[i, j] = self.fuel_T[i, j] + self.Q_fuelFluid[i, j]/(self.fuel_in[1]/self.dims[2]*self.fuel_cp[i, j])
                         
-                        self.T_fuelPlate[i, j] = self.T_fuelPlate[i, j] + self.Q_fuelPlate[i, j]/(self.metalRho*self.metalcp*self.Vcell_fuelplate)
                         self.T_utilityPlate[i, j] = self.T_utilityPlate[i, j] + self.Q_utilityPlate[i, j]/(self.metalRho*self.metalcp*self.Vcell_utilityPlate)
                         self.T_reactantPlate[i, j] = self.T_reactantPlate[i, j] + self.Q_reactantsPlate[i, j]/(self.metalRho*self.metalcp*self.Vcell_reactantPlate)
                         
                         #assuming incompressible flow given low velocity
                         self.reactant_P[i, j] = self.reactant_P[i, j] - 2*self.reactant_f[i, j] * (self.dims[1] + self.dims[4]) / self.reactant_dh *self.reactant_rho[i, j]*self.reactant_u[i, j]**2
                         self.utility_P[i, j] = self.utility_P[i, j] - 2*self.utility_f[i, j] * (self.dims[0] + self.dims[4]) / self.utility_dh *self.utility_rho[i, j]*self.utility_u[i, j]**2
-                        self.fuel_P[i, j] = self.fuel_P[i, j] - 2*self.fuel_f[i, j] * (self.dims[1] + self.dims[4]) / self.reactant_dh *self.fuel_rho[i, j]*self.fuel_u[i, j]**2
         
                 
                         #update thermophysical and transport properties for new conditions
                         self.reactant_rho[i, j], self.reactant_mu[i, j], self.reactant_cp[i, j],self.reactant_k[i, j], self.reactant_Pr[i, j] = self.fluid_properties_reactant(self.reactant_T[i, j], self.reactant_P[i, j])
                         self.utility_rho[i, j], self.utility_mu[i, j], self.utility_cp[i, j],self.utility_k[i, j], self.utility_Pr[i, j] = self.fluid_properties_utility(self.utility_T[i, j], self.utility_P[i, j])
-                        self.fuel_rho[i, j], self.fuel_mu[i, j], self.fuel_cp[i, j],self.fuel_k[i, j], self.fuel_Pr[i, j] = self.fluid_properties_fuel(self.fuel_T[i, j], self.fuel_P[i, j])
         
                         
                         #update velocity
                         self.reactant_u[i, j] = self.reactant_u0*self.reactant_rho[i, j]/self.reactant_rho0
                         self.utility_u[i, j] = self.utility_u0*self.utility_rho[i, j]/self.utility_rho0
-                        self.fuel_u[i, j] = self.fuel_u0*self.fuel_rho[i, j]/self.fuel_rho0
                         
                         self.reactant_Re[i, j] = self.reynolds(self.reactant_rho[i, j], self.reactant_u[i, j], self.reactant_sqrtA, self.reactant_mu[i, j])
                         self.utility_Re[i, j] = self.reynolds(self.utility_rho[i, j], self.utility_u[i, j], self.utility_sqrtA, self.utility_mu[i, j])
-                        self.fuel_Re[i, j] = self.reynolds(self.fuel_rho[i, j], self.fuel_u[i, j], self.reactant_sqrtA, self.fuel_mu[i, j])
                         
                         #update lplus and friction factors
                         self.reactant_lplus[i, j] = self.lplus(self.reactant_z[j], self.reactant_Re[i, j], self.reactant_sqrtA)
                         self.utility_lplus[i, j] = self.lplus(self.utility_z[i], self.utility_Re[i, j], self.utility_sqrtA)
-                        self.fuel_lplus[i, j] = self.lplus(self.reactant_z[j], self.fuel_Re[i, j], self.reactant_sqrtA)
                         self.reactant_f[i, j] = self.devflow_friction(self.reactant_lplus[i, j], self.reactant_eps, self.reactant_Re[i, j])
                         self.utility_f[i, j] = self.devflow_friction(self.utility_lplus[i, j], self.utility_eps, self.utility_Re[i, j])
-                        self.fuel_f[i, j] = self.devflow_friction(self.fuel_lplus[i, j], self.reactant_eps, self.fuel_Re[i, j])
                         
                         
                         #determine developing region heat transfer coefficients
@@ -793,26 +736,17 @@ class crossflow_hx(object):
                         else:
                             #self.utility_Nu[i, j] = 0.023*self.utility_Re[i, j]**0.8*self.utility_Pr[i, j]**0.4
                             self.utility_Nu[i, j] = (self.utility_f[i, j]*(self.utility_Re[i, j]-1000)*self.utility_Pr[i, j])/(1+12.7*self.utility_f[i, j]**0.5*(self.utility_Pr[i, j]**(2/3)-1))
-        
-                        if self.fuel_Re[i, j] < 2300: 
-                            self.fuel_Nu[i, j] = self.entryNu(self.reactant_z[j], self.fuel_Re[i, j], self.fuel_Pr[i, j], self.fuel_f[i, j], self.reactant_eps, self.reactant_sqrtA)
-                        else:
-                            #self.fuel_Nu[i, j] = 0.023*self.fuel_Re[i, j]**0.8*self.fuel_Pr[i, j]**0.4
-                            self.fuel_Nu[i, j] = (self.fuel_f[i, j]*(self.fuel_Re[i, j]-1000)*self.fuel_Pr[i, j])/(1+12.7*self.fuel_f[i, j]**0.5*(self.fuel_Pr[i, j]**(2/3)-1))
-
                             
                         self.reactant_h[i, j] = self.reactant_Nu[i, j]*self.reactant_k[i, j]/self.reactant_sqrtA
                         self.utility_h[i, j] = self.utility_Nu[i, j]*self.utility_k[i, j]/self.utility_sqrtA
-                        self.fuel_h[i, j] = self.fuel_Nu[i, j]*self.fuel_k[i, j]/self.reactant_sqrtA#calculate heat tranfer for all interactions
                         #print(self.Q_utilityPlate[i, j]/(self.metalRho*self.metalcp*self.Vcell_utilityPlate))
         
         #output utility and reactant conditions
         self.reactantout = [self.reactant_T[:, :], self.reactant_P[:, :]]
         self.utilityout = [self.utility_T[:, :], self.utility_P[:, :]]
-        self.fuelout = [self.fuel_T[:, :], self.fuel_P[:, :]]
         #self.fuelout = self.T_fuelPlate
 
-        return(self.reactantout, self.utilityout, self.fuelout, self.T_reactantPlate, self.T_utilityPlate, self.T_fuelPlate)   
+        return(self.reactantout, self.utilityout, self.T_reactantPlate, self.T_utilityPlate)   
     
     def transientHX(self, t, T):
         """
@@ -842,21 +776,19 @@ class crossflow_hx(object):
         columns = int(self.dims[3])
         
         #unwrap temperature vector and set up dTdt 
-        initial_reactant_Temps, initial_utility_Temps, initial_fuel_Temps, initial_reactantPlate_Temps, initial_utilityPlate_Temps, initial_fuelPlate_Temps = self.unwrap_T(T)
+        initial_reactant_Temps, initial_utility_Temps, initial_reactantPlate_Temps, initial_utilityPlate_Temps = self.unwrap_T(T)
         
         dTdt_reactant = np.zeros(shape = [rows, columns])
         dTdt_utility = np.zeros(shape = [rows, columns])
-        dTdt_fuel = np.zeros(shape = [rows, columns])
         
         dTdt_reactantPlate = np.zeros(shape = [rows, columns])
         dTdt_utilityPlate = np.zeros(shape = [rows, columns])
-        dTdt_fuelPlate = np.zeros(shape = [rows, columns])
 
         #update properties and correlations
-        self.update_properties(initial_reactant_Temps, initial_utility_Temps, initial_fuel_Temps)
+        self.update_properties(initial_reactant_Temps, initial_utility_Temps)
 
         #create a arrays to store heat transfer between each fluid/solid
-        Q_uPuF, Q_uPrF, Q_uPrP, Q_rPrF, Q_rPfP, Q_rPfF, Q_fPfF = map(np.copy, [self.emptyarray(self.dims[2], self.dims[3], 1)]*7)
+        Q_uPuF, Q_uPrF, Q_uPrP, Q_rPrF = map(np.copy, [self.emptyarray(self.dims[2], self.dims[3], 1)]*4)
 
         for i in range(rows):
             for j in range(columns):
@@ -864,9 +796,6 @@ class crossflow_hx(object):
                 Q_uPrF[i, j] = self.reactant_h[i, j]*self.hx_area_uPrF*(initial_reactant_Temps[i, j] - initial_utilityPlate_Temps[i, j])
                 Q_uPrP[i, j] = self.metalk*self.hx_area_uPrP*(initial_reactantPlate_Temps[i, j] - initial_utilityPlate_Temps[i, j])/self.dims[5]
                 Q_rPrF[i, j] = self.reactant_h[i, j]*self.hx_area_rPrF*(initial_reactant_Temps[i, j] - initial_reactantPlate_Temps[i, j])
-                #Q_rPfF[i, j] = self.fuel_h[i, j]*self.hx_area_rPfF*(initial_reactantPlate_Temps[i, j] - initial_fuel_Temps[i, j])
-                Q_rPfP[i, j] = self.metalk*self.hx_area_rPfP*(initial_reactantPlate_Temps[i, j] - initial_fuelPlate_Temps[i, j])/self.dims[5]
-                #Q_fPfF[i, j] = -self.fuel_h[i, j]*self.hx_area_fPfF*(initial_fuel_Temps[i, j] - initial_fuelPlate_Temps[i, j])
                 #totalQ = Q_uPuF[i,j] + Q_uPrF[i,j] + Q_uPrP[i,j] + Q_rPrF[i,j] + Q_rPfF[i,j] + Q_rPfP[i,j] + Q_fPfF[i,j]
                 #if abs(totalQ) > 0.0001:
                 #    print(totalQ)
@@ -874,42 +803,34 @@ class crossflow_hx(object):
         #evaluate [0, 0]
         dTdt_reactant[0, 0] = (self.reactant_in[1]/self.dims[2]*(self.reactant_in[2]-initial_reactant_Temps[0, 0])/(self.Vcell_reactant*self.reactant_rho[0, 0])) - (Q_uPrF[0, 0] + Q_rPrF[0, 0])/(self.reactant_cp[0,0]*self.Vcell_reactant*self.reactant_rho[0, 0])
         dTdt_utility[0, 0] = (self.utility_in[1]/self.dims[3]*(self.utility_in[2]-initial_utility_Temps[0, 0])/(self.Vcell_utility*self.utility_rho[0, 0])) + (Q_uPuF[0, 0])/(self.utility_cp[0,0]*self.Vcell_utility*self.utility_rho[0, 0])
-        dTdt_fuel[0, 0] = (self.fuel_in[1]/self.dims[2]*(self.fuel_in[2]-initial_fuel_Temps[0, 0])/(self.Vcell_fuel*self.fuel_rho[0, 0])) + (Q_rPfF[0, 0] + Q_fPfF[0, 0])/(self.fuel_cp[0,0]*self.Vcell_fuel*self.fuel_rho[0, 0])
         
-        dTdt_reactantPlate[0, 0] = (Q_rPrF[0, 0] - Q_rPfF[0, 0] - Q_rPfP[0, 0] - Q_uPrP[0, 0])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+        dTdt_reactantPlate[0, 0] = (Q_rPrF[0, 0] - Q_uPrP[0, 0])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
         dTdt_utilityPlate[0, 0] = (Q_uPrF[0, 0] + Q_uPrP[0, 0] - Q_uPuF[0, 0])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
-        dTdt_fuelPlate[0, 0] = (Q_rPfP[0, 0] - Q_fPfF[0, 0])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)
 
         #set initial column (steam channel 1)
         for i in range(1, rows):
             dTdt_reactant[i, 0] = (self.reactant_in[1]/self.dims[2]*(self.reactant_in[2]-initial_reactant_Temps[i, 0])/(self.Vcell_reactant*self.reactant_rho[i, 0])) - (Q_uPrF[i, 0] + Q_rPrF[i, 0])/(self.reactant_cp[i,0]*self.Vcell_reactant*self.reactant_rho[i, 0])
             dTdt_utility[i, 0] = (self.utility_in[1]/self.dims[3]*(initial_utility_Temps[i-1, 0]-initial_utility_Temps[i, 0])/(self.Vcell_utility*self.utility_rho[i, 0])) + (Q_uPuF[i, 0])/(self.utility_cp[i,0]*self.Vcell_utility*self.utility_rho[i, 0])
-            dTdt_fuel[i, 0] = (self.fuel_in[1]/self.dims[2]*(self.fuel_in[2]-initial_fuel_Temps[i, 0])/(self.Vcell_fuel*self.fuel_rho[i, 0])) + (Q_rPfF[i, 0] + Q_fPfF[i, 0])/(self.fuel_cp[i,0]*self.Vcell_fuel*self.fuel_rho[i, 0])
             
-            dTdt_reactantPlate[i, 0] = (Q_rPrF[i, 0] - Q_rPfF[i, 0] - Q_rPfP[i, 0] - Q_uPrP[i, 0])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+            dTdt_reactantPlate[i, 0] = (Q_rPrF[i, 0]  - Q_uPrP[i, 0])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
             dTdt_utilityPlate[i, 0] = (Q_uPrF[i, 0] + Q_uPrP[i, 0] - Q_uPuF[i, 0])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
-            dTdt_fuelPlate[i, 0] = (Q_rPfP[i, 0] - Q_fPfF[i, 0])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)   
 
         #set initial row (reactant channel 1)
         for i in range(1, columns):
             dTdt_reactant[0, i] = (self.reactant_in[1]/self.dims[2]*(initial_reactant_Temps[0, i-1]-initial_reactant_Temps[0, i])/(self.Vcell_reactant*self.reactant_rho[0, i])) - (Q_uPrF[0, i] + Q_rPrF[0, i])/(self.reactant_cp[0,i]*self.Vcell_reactant*self.reactant_rho[0, i])
             dTdt_utility[0, i] = (self.utility_in[1]/self.dims[3]*(self.utility_in[2]-initial_utility_Temps[0, i])/(self.Vcell_utility*self.utility_rho[0, i])) + (Q_uPuF[0, i])/(self.utility_cp[0,i]*self.Vcell_utility*self.utility_rho[0, i])
-            dTdt_fuel[0, i] = (self.fuel_in[1]/self.dims[2]*(initial_fuel_Temps[0, i-1]-initial_fuel_Temps[0, i])/(self.Vcell_fuel*self.fuel_rho[0, i])) + (Q_rPfF[0, i] + Q_fPfF[0, i])/(self.fuel_cp[0,i]*self.Vcell_fuel*self.fuel_rho[0, i])
             
-            dTdt_reactantPlate[0, i] = (Q_rPrF[0, i] - Q_rPfF[0, i] - Q_rPfP[0, i] - Q_uPrP[0, i])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+            dTdt_reactantPlate[0, i] = (Q_rPrF[0, i] - Q_uPrP[0, i])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
             dTdt_utilityPlate[0, i] = (Q_uPrF[0, i] + Q_uPrP[0, i] - Q_uPuF[0, i])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
-            dTdt_fuelPlate[0, i] = (Q_rPfP[0, i] - Q_fPfF[0, i])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)
     
         #solve remainder of arrays
         for j in range(1, columns):
             for i in range(1, rows):
                 dTdt_reactant[i, j] = (self.reactant_in[1]/self.dims[2]*(initial_reactant_Temps[i, j-1]-initial_reactant_Temps[i, j])/(self.Vcell_reactant*self.reactant_rho[i, j])) - (Q_uPrF[i, j] + Q_rPrF[i, j])/(self.reactant_cp[i,j]*self.Vcell_reactant*self.reactant_rho[i, j])
                 dTdt_utility[i, j] = (self.utility_in[1]/self.dims[3]*(initial_utility_Temps[i-1, j]-initial_utility_Temps[i, j])/(self.Vcell_utility*self.utility_rho[i, j])) + (Q_uPuF[i, j])/(self.utility_cp[i,j]*self.Vcell_utility*self.utility_rho[i, j])
-                dTdt_fuel[i, j] = (self.fuel_in[1]/self.dims[2]*(initial_fuel_Temps[i, j-1]-initial_fuel_Temps[i, j])/(self.Vcell_fuel*self.fuel_rho[i, j])) + (Q_rPfF[i, j] + Q_fPfF[i, j])/(self.fuel_cp[i,j]*self.Vcell_fuel*self.fuel_rho[i, j])
                 
-                dTdt_reactantPlate[i, j] = (Q_rPrF[i, j] - Q_rPfF[i, j] - Q_rPfP[i, j] - Q_uPrP[i, j])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+                dTdt_reactantPlate[i, j] = (Q_rPrF[i, j] - Q_uPrP[i, j])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
                 dTdt_utilityPlate[i, j] = (Q_uPrF[i, j] + Q_uPrP[i, j] - Q_uPuF[i, j])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
-                dTdt_fuelPlate[i, j] = (Q_rPfP[i, j] - Q_fPfF[i, j])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)                
         
         #react = np.sum(dTdt_reactant)*self.reactant_cp[0,0]*self.reactant_in[1]
         #util = np.sum(dTdt_utility)*self.utility_cp[0,0]*self.utility_in[1]
@@ -917,92 +838,77 @@ class crossflow_hx(object):
 
         #print(react, util, fuel, react+util+fuel)
         
-        #intra-plate condictive heat transfer - set up body of the heat exchanger
-        for j in range(1, columns-1):
-            for i in range(1, rows-1):
-                dTdt_reactantPlate[i, j] = dTdt_reactantPlate[i, j] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_reactantPlate_Temps[i-1, j] - initial_reactantPlate_Temps[i+1, j])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
-                dTdt_reactantPlate[i, j] = dTdt_reactantPlate[i, j] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_reactantPlate_Temps[i, j-1] - initial_reactantPlate_Temps[i, j+1])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
-                dTdt_fuelPlate[i, j] = dTdt_fuelPlate[i, j] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_fuelPlate_Temps[i-1, j] - initial_fuelPlate_Temps[i+1, j])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)
-                dTdt_fuelPlate[i, j] = dTdt_fuelPlate[i, j] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_fuelPlate_Temps[i, j-1] - initial_fuelPlate_Temps[i, j+1])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)
-                dTdt_utilityPlate[i, j] = dTdt_utilityPlate[i, j] + ((self.dims[1]+self.dims[4])*self.dims[5]-self.utility_sqrtA**2)*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[i-1, j] - initial_utilityPlate_Temps[i+1, j])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
-                dTdt_utilityPlate[i, j] = dTdt_utilityPlate[i, j] + ((self.dims[0]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[1]+self.dims[4])*(initial_utilityPlate_Temps[i, j-1] - initial_utilityPlate_Temps[i, j+1])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
+        # #intra-plate condictive heat transfer - set up body of the heat exchanger
+        # for j in range(1, columns-1):
+        #     for i in range(1, rows-1):
+        #         dTdt_reactantPlate[i, j] = dTdt_reactantPlate[i, j] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_reactantPlate_Temps[i-1, j] - initial_reactantPlate_Temps[i+1, j])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+        #         dTdt_reactantPlate[i, j] = dTdt_reactantPlate[i, j] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_reactantPlate_Temps[i, j-1] - initial_reactantPlate_Temps[i, j+1])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+        #         dTdt_utilityPlate[i, j] = dTdt_utilityPlate[i, j] + ((self.dims[1]+self.dims[4])*self.dims[5]-self.utility_sqrtA**2)*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[i-1, j] - initial_utilityPlate_Temps[i+1, j])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
+        #         dTdt_utilityPlate[i, j] = dTdt_utilityPlate[i, j] + ((self.dims[0]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[1]+self.dims[4])*(initial_utilityPlate_Temps[i, j-1] - initial_utilityPlate_Temps[i, j+1])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
         
-        # #add insulated boundaries
+        # # #add insulated boundaries
 
-        #fix my bad coding
-        rows = rows-1
-        columns = columns-1
+        # #fix my bad coding
+        # rows = rows-1
+        # columns = columns-1
         
-        for i in range(1, columns-1):
-            dTdt_reactantPlate[0, i] = dTdt_reactantPlate[0, i] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_reactantPlate_Temps[0, i-1] - initial_reactantPlate_Temps[0, i+1])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
-            dTdt_reactantPlate[rows, i] = dTdt_reactantPlate[rows, i] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_reactantPlate_Temps[rows, i-1] - initial_reactantPlate_Temps[rows, i+1])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
-            dTdt_reactantPlate[0, i] = dTdt_reactantPlate[0, i] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_reactantPlate_Temps[0, i] - initial_reactantPlate_Temps[1, i])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
-            dTdt_reactantPlate[rows, i] = dTdt_reactantPlate[rows, i] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_reactantPlate_Temps[rows-1, i] - initial_reactantPlate_Temps[rows, i])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+        # for i in range(1, columns-1):
+        #     dTdt_reactantPlate[0, i] = dTdt_reactantPlate[0, i] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_reactantPlate_Temps[0, i-1] - initial_reactantPlate_Temps[0, i+1])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+        #     dTdt_reactantPlate[rows, i] = dTdt_reactantPlate[rows, i] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_reactantPlate_Temps[rows, i-1] - initial_reactantPlate_Temps[rows, i+1])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+        #     dTdt_reactantPlate[0, i] = dTdt_reactantPlate[0, i] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_reactantPlate_Temps[0, i] - initial_reactantPlate_Temps[1, i])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+        #     dTdt_reactantPlate[rows, i] = dTdt_reactantPlate[rows, i] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_reactantPlate_Temps[rows-1, i] - initial_reactantPlate_Temps[rows, i])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
 
-            dTdt_fuelPlate[0, i] = dTdt_fuelPlate[0, i] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_fuelPlate_Temps[0, i-1] - initial_fuelPlate_Temps[0, i+1])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)
-            dTdt_fuelPlate[rows, i] = dTdt_fuelPlate[rows, i] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_fuelPlate_Temps[rows, i-1] - initial_fuelPlate_Temps[rows, i+1])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)
-            dTdt_fuelPlate[0, i] = dTdt_fuelPlate[0, i] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_fuelPlate_Temps[0, i] - initial_fuelPlate_Temps[1, i])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)
-            dTdt_fuelPlate[rows, i] = dTdt_fuelPlate[rows, i] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_fuelPlate_Temps[rows-1, i] - initial_fuelPlate_Temps[rows, i])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)
+        #     dTdt_utilityPlate[0, i] = dTdt_utilityPlate[0, i] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[0, i-1] - initial_utilityPlate_Temps[0, i+1])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
+        #     dTdt_utilityPlate[rows, i] = dTdt_utilityPlate[rows, i] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[rows, i-1] - initial_utilityPlate_Temps[rows, i+1])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
+        #     dTdt_utilityPlate[0, i] = dTdt_utilityPlate[0, i] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.utility_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_utilityPlate_Temps[0, i] - initial_utilityPlate_Temps[1, i])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
+        #     dTdt_utilityPlate[rows, i] = dTdt_utilityPlate[rows, i] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.utility_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_utilityPlate_Temps[rows-1, i] - initial_utilityPlate_Temps[rows, i])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
 
-            dTdt_utilityPlate[0, i] = dTdt_utilityPlate[0, i] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[0, i-1] - initial_utilityPlate_Temps[0, i+1])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
-            dTdt_utilityPlate[rows, i] = dTdt_utilityPlate[rows, i] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[rows, i-1] - initial_utilityPlate_Temps[rows, i+1])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
-            dTdt_utilityPlate[0, i] = dTdt_utilityPlate[0, i] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.utility_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_utilityPlate_Temps[0, i] - initial_utilityPlate_Temps[1, i])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
-            dTdt_utilityPlate[rows, i] = dTdt_utilityPlate[rows, i] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.utility_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_utilityPlate_Temps[rows-1, i] - initial_utilityPlate_Temps[rows, i])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
+        # for j in range(1, rows-1):
+        #     dTdt_reactantPlate[j, 0] = dTdt_reactantPlate[j, 0] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_reactantPlate_Temps[j-1, 0] - initial_reactantPlate_Temps[j+1, 0])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+        #     dTdt_reactantPlate[j, columns] = dTdt_reactantPlate[j, columns] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_reactantPlate_Temps[j-1, columns] - initial_reactantPlate_Temps[j+1, columns])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+        #     dTdt_reactantPlate[j, 0] = dTdt_reactantPlate[j, 0] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_reactantPlate_Temps[j, 0] - initial_reactantPlate_Temps[j, 1])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
+        #     dTdt_reactantPlate[j, columns] = dTdt_reactantPlate[j, columns] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_reactantPlate_Temps[j, columns-1] - initial_reactantPlate_Temps[j, columns])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
 
-        for j in range(1, rows-1):
-            dTdt_reactantPlate[j, 0] = dTdt_reactantPlate[j, 0] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_reactantPlate_Temps[j-1, 0] - initial_reactantPlate_Temps[j+1, 0])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
-            dTdt_reactantPlate[j, columns] = dTdt_reactantPlate[j, columns] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_reactantPlate_Temps[j-1, columns] - initial_reactantPlate_Temps[j+1, columns])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
-            dTdt_reactantPlate[j, 0] = dTdt_reactantPlate[j, 0] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_reactantPlate_Temps[j, 0] - initial_reactantPlate_Temps[j, 1])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
-            dTdt_reactantPlate[j, columns] = dTdt_reactantPlate[j, columns] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_reactantPlate_Temps[j, columns-1] - initial_reactantPlate_Temps[j, columns])/(self.metalcp*self.metalRho*self.Vcell_reactantPlate)
-
-            dTdt_fuelPlate[j, 0] = dTdt_fuelPlate[j, 0] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_fuelPlate_Temps[j-1, 0] - initial_fuelPlate_Temps[j+1, 0])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)
-            dTdt_fuelPlate[j, columns] = dTdt_fuelPlate[j, columns] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.reactant_sqrtA**2)*self.metalk/(self.dims[1]+self.dims[4])*(initial_fuelPlate_Temps[j-1, columns] - initial_fuelPlate_Temps[j+1, columns])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)
-            dTdt_fuelPlate[j, 0] = dTdt_fuelPlate[j, 0] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_fuelPlate_Temps[j, 0] - initial_fuelPlate_Temps[j, 1])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)
-            dTdt_fuelPlate[j, columns] = dTdt_fuelPlate[j, columns] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_fuelPlate_Temps[j, columns-1] - initial_fuelPlate_Temps[j, columns])/(self.metalcp*self.metalRho*self.Vcell_fuelplate)
-
-            dTdt_utilityPlate[j, 0] = dTdt_utilityPlate[j, 0] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[j-1, 0] - initial_utilityPlate_Temps[j+1, 0])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
-            dTdt_utilityPlate[j, columns] = dTdt_utilityPlate[j, columns] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[j-1, columns] - initial_utilityPlate_Temps[j+1, columns])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
-            dTdt_utilityPlate[j, 0] = dTdt_utilityPlate[j, 0] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.utility_sqrtA**2)*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[j, 0] - initial_utilityPlate_Temps[j, 1])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
-            dTdt_utilityPlate[j, columns] = dTdt_utilityPlate[j, columns] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.utility_sqrtA**2)*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[j, columns-1] - initial_utilityPlate_Temps[j, columns])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
+        #     dTdt_utilityPlate[j, 0] = dTdt_utilityPlate[j, 0] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[j-1, 0] - initial_utilityPlate_Temps[j+1, 0])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
+        #     dTdt_utilityPlate[j, columns] = dTdt_utilityPlate[j, columns] + ((self.dims[1]+self.dims[4])*self.dims[5])*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[j-1, columns] - initial_utilityPlate_Temps[j+1, columns])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
+        #     dTdt_utilityPlate[j, 0] = dTdt_utilityPlate[j, 0] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.utility_sqrtA**2)*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[j, 0] - initial_utilityPlate_Temps[j, 1])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
+        #     dTdt_utilityPlate[j, columns] = dTdt_utilityPlate[j, columns] + ((self.dims[0]+self.dims[4])*self.dims[5]-self.utility_sqrtA**2)*self.metalk/(self.dims[0]+self.dims[4])*(initial_utilityPlate_Temps[j, columns-1] - initial_utilityPlate_Temps[j, columns])/(self.metalcp*self.metalRho*self.Vcell_utilityPlate)
 
         #wrap arrays up as a vector and return                
-        dTdt = np.concatenate([dTdt_reactant.ravel(), dTdt_utility.ravel(), dTdt_fuel.ravel(), dTdt_reactantPlate.ravel(), dTdt_utilityPlate.ravel(), dTdt_fuelPlate.ravel()])
+        dTdt = np.concatenate([dTdt_reactant.ravel(), dTdt_utility.ravel(), dTdt_reactantPlate.ravel(), dTdt_utilityPlate.ravel()])
         return dTdt
 
 #set input dimensions and streams    
-reactantin = [{'O2':5, 'CO2':92, 'H2O':3, 'CH4':0}, 0.1/116, 900, 1500000]
-utilityin = [{'H2O': 100}, 0.05/116, 500, 1500000]
-fuelin = [{'CH4': 100}, 0.05/58/200, 400, 1500000]
+reactantin = [{'O2':5, 'CO2':92, 'H2O':3, 'CH4':0}, 0.05/116, 900, 1500000]
+utilityin = [{'H2O': 100}, 0.05/116, 400, 100000]
 dimensions = [0.0015, 0.0015, 10, 10, 0.0011, 0.0021]
 
 #solve steady state model
-hx1 = crossflow_hx(reactantin, utilityin, fuelin, dimensions)
-reactantout, utilityout, fuelout, reactantplate, utilityplate, fuelplate = hx1.solvehx()
+hx1 = crossflow_hx(reactantin, utilityin, dimensions)
+reactantout, utilityout, reactantplate, utilityplate = hx1.solvehx()
 
 #solve transient model - grab initial feed temperatures and use as input temperature
 reactantinitials = reactantin[2]*np.ones(shape = (dimensions[2], dimensions[3]))
 utilityinitials = utilityin[2]*np.ones(shape = (dimensions[2], dimensions[3]))
-fuelinitials = fuelin[2]*np.ones(shape = (dimensions[2], dimensions[3]))
 
 reactantplate = reactantplate[:, 1:]
 utilityplate = utilityplate[1:, :]
-fuelplate = fuelplate[:, 1:]
 
 #use this to take SS model output as initial conditions
 #initialTemps = np.concatenate([reactantout[0].ravel(), utilityout[0].ravel()])
 
 #use this to take initial input conditions as initial conditions
-initialTemps = np.concatenate([reactantinitials.ravel(), utilityinitials.ravel(), fuelinitials.ravel(), reactantplate.ravel(), utilityplate.ravel(), fuelplate.ravel()])
+initialTemps = np.concatenate([reactantinitials.ravel(), utilityinitials.ravel(), reactantplate.ravel(), utilityplate.ravel()])
 
 #solve using an implicit solver (BDF)
 #sol = solve_ivp(hx1.transientHX, [0, 0.05], initialTemps, method = "BDF", t_eval = [0, 0.001, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04, 0.045, 0.05])
-sol = solve_ivp(hx1.transientHX, [0, 20], initialTemps, method = "LSODA", t_eval = [0, 1, 2, 3, 5, 7, 10, 15, 20])
+sol = solve_ivp(hx1.transientHX, [0, 10000], initialTemps, method = "LSODA", t_eval = [0, 0.1, 0.2, 0.5, 1, 2, 3, 4, 5, 7.5, 10, 100, 1000, 10000])
 
 #grab final temperature profiles and reshape into given form
 T_averages_reactants = np.zeros((1, dimensions[3]))
 T_averages_utility = np.zeros((1, dimensions[2]))
 
-for n in range(8):
+for n in range(13):
     reactant_T_out = sol['y'][0:(dimensions[2]*(dimensions[3]))]
     reactant_T_out = reactant_T_out[:, n]
     reactant_T_out = reactant_T_out.reshape(dimensions[2], dimensions[3])
@@ -1010,31 +916,21 @@ for n in range(8):
     utility_T_out = sol['y'][(dimensions[2]*(dimensions[3])):dimensions[2]*(dimensions[3])*2]
     utility_T_out = utility_T_out[:, n]
     utility_T_out = utility_T_out.reshape(dimensions[2], dimensions[3])
-    
-    fuel_T_out = sol['y'][(dimensions[2]*(dimensions[3]))*2:dimensions[2]*(dimensions[3])*3]
-    fuel_T_out = fuel_T_out[:, n]
-    fuel_T_out = fuel_T_out.reshape(dimensions[2], dimensions[3])
-    
-    reactantPlate_T_out = sol['y'][(dimensions[2]*(dimensions[3]))*3:dimensions[2]*(dimensions[3])*4]
+
+    reactantPlate_T_out = sol['y'][(dimensions[2]*(dimensions[3]))*2:dimensions[2]*(dimensions[3])*3]
     reactantPlate_T_out = reactantPlate_T_out[:, n]
     reactantPlate_T_out = reactantPlate_T_out.reshape(dimensions[2], dimensions[3])
     
-    utilityPlate_T_out = sol['y'][(dimensions[2]*(dimensions[3]))*4:dimensions[2]*(dimensions[3])*5]
+    utilityPlate_T_out = sol['y'][(dimensions[2]*(dimensions[3]))*3:dimensions[2]*(dimensions[3])*4]
     utilityPlate_T_out = utilityPlate_T_out[:, n]
     utilityPlate_T_out = utilityPlate_T_out.reshape(dimensions[2], dimensions[3])
     
-    fuelPlate_T_out = sol['y'][(dimensions[2]*(dimensions[3]))*5:dimensions[2]*(dimensions[3])*6]
-    fuelPlate_T_out = fuelPlate_T_out[:, n]
-    fuelPlate_T_out = fuelPlate_T_out.reshape(dimensions[2], dimensions[3])
-    
     reactant_T_out_avg = reactant_T_out.mean(axis = 0)
     utility_T_out_avg = utility_T_out.mean(axis = 1).transpose()
-    fuel_T_out_avg = fuel_T_out.mean(axis = 0)
     reactantPlate_T_out_avg = reactantPlate_T_out.mean(axis = 0)
     utilityPlate_T_out_avg = utilityPlate_T_out.mean(axis = 1).transpose()
-    fuelPlate_T_out_avg = fuelPlate_T_out.mean(axis = 0)
     
-    T_averages_reactants = np.vstack((T_averages_reactants, reactant_T_out_avg, fuel_T_out_avg, reactantPlate_T_out_avg, fuelPlate_T_out_avg))
+    T_averages_reactants = np.vstack((T_averages_reactants, reactant_T_out_avg, reactantPlate_T_out_avg))
     T_averages_utility = np.vstack((T_averages_utility, utility_T_out_avg, utilityPlate_T_out_avg))
     
     #np.savetxt('T_profile_reactants.csv', T_averages_reactants, delimiter=',')
@@ -1043,7 +939,16 @@ for n in range(8):
     #Tprofile = np.ones((dimensions[2], dimensions[3]))
     #Tprofile = np.concatenate([Tprofile, reactant_T_out, utility_T_out, fuel_T_out, reactantPlate_T_out, utilityPlate_T_out, fuelPlate_T_out])
     #np.savetxt('T_profile_t' + str(sol['t'][i]), Tprofile, delimiter=',')
-np.savetxt('T_profile_reactants.csv', T_averages_reactants, delimiter=',')
-np.savetxt('T_profile_utility.csv', T_averages_utility, delimiter=',')
+plt.imshow(reactant_T_out, cmap = 'hot')
+plt.colorbar()
+plt.show()
+
+
+np.savetxt('Reactant_gas_heatmap.csv', reactant_T_out, delimiter=',')
+np.savetxt('Reactant_plate_heatmap.csv', reactantPlate_T_out, delimiter=',')
+np.savetxt('utility_gas_heatmap.csv', utility_T_out, delimiter=',')
+np.savetxt('utility_plate_heatmap.csv', utilityPlate_T_out, delimiter=',')
+
+#np.savetxt('T_profile_utility.csv', T_averages_utility, delimiter=',')
     
     
