@@ -1,7 +1,6 @@
 # cat-hx-microreactor
-Catalystic Heat Exchange Microreactor for Oxy-Fuel Combustion Reduced Order Modelling
-Developed in Python with Cantera for reactions and fluid properties
-Main components consist of cross-flow heat exchanger modelling in micro-channels and catalyzed reactions in packed beds
+Printed circuit heat exchanger (PCHE) in crossflow model
+Handles two flows in parallel with a third stream in crossflow
 
-Cross-flow heat exchanger model:
-Shows hot gas flow in one direction with utility flow in a cross-flow setup, with a discretized grid representing locations in a printed circuit heat excahanger. Includes developing laminar flow region correlations for heat transfer and pressure drops. Neglects heat transfer between channels of the same fluid.
+crossflow_hx_with_intraplate - original model incorporating three fluids with intra-plate heat transfer
+crossflow_PCHE - updated model, including the replacement of Cantera and significant performance increases
