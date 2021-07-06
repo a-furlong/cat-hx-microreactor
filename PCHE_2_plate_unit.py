@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Wed May 5 12:57:19 2021
-Modified Wed May 5 2021
 
 @author: afurlong
 
@@ -15,7 +14,11 @@ import numpy as np
 import math
 from scipy.integrate import solve_ivp
 import time
-import sys
+#import sys
+#from scipy.optimize import minimize
+#from scipy.optimize import Bounds
+from scipy.optimize import fsolve
+from scipy.optimize import root
 #import matplotlib.pyplot as plt
 
 class crossflow_PCHE(object):
@@ -565,14 +568,27 @@ class crossflow_PCHE(object):
         #calculate losses via Bernoulli's equation
         deltaP_reactant = 2*self.reactant_f*self.deltax/self.reactant_sqrtA*self.reactant_u**2*self.reactant_rho
         deltaP_utility = 2*self.utility_f*self.deltaz/self.utility_sqrtA*self.utility_u**2*self.utility_rho
+        #print(deltaP_reactant)
     
-        #apply losses to a forward-shifted pressure profile
-        self.reactant_P = np.roll(self.reactant_P, 1, 1) - deltaP_reactant
-        self.utility_P = np.roll(self.utility_P, 0, 1) - deltaP_utility
-        
-        #apply boundary condition of upstream reactor condition
-        self.reactant_P[:, 0] = self.reactant[3] - deltaP_reactant[:, 0]
-        self.utility_P[0, :] = self.utility[3] - deltaP_utility[0, :]
+        #if the array is unchanged from its initial state, then initialize
+        if self.reactant_P.mean() == self.reactant_P[0, 0]:
+            self.reactant_P[:, 0] = self.reactant[3] - deltaP_reactant[:, 0]
+            self.utility_P[0, :] = self.utility[3] - deltaP_utility[0, :]
+            
+            for i in range(1, self.columns):
+                self.reactant_P[:, i] = self.reactant_P[:, i-1] - deltaP_reactant[:, i]
+                
+            for i in range(1, self.rows):
+                self.utility_P[i, :] = self.utility_P[i-1, :] - deltaP_utility[i, :]
+            
+        #if the pressure drop has been initialized before, then update it with the new delta P    
+        else:
+            self.reactant_P = np.roll(self.reactant_P, 1, 1) - deltaP_reactant
+            self.reactant_P[:, 0] = self.reactant[3] - deltaP_reactant[:, 0]
+            self.utility_P = np.roll(self.utility_P, 0, 1) - deltaP_utility
+            self.utility_P[0, :] = self.utility[3] - deltaP_utility[0, :]
+            
+        print(self.reactant_P)
     
         return
     
@@ -673,9 +689,13 @@ class crossflow_PCHE(object):
         #wrap up dT/dt as a vector for use in solve ivp
         dTdt = np.concatenate([dTdt_reactant.ravel(), dTdt_utility.ravel(), 
                                dTdt_reactantPlate.ravel(), dTdt_utilityPlate.ravel()])
-        
-        #self.update_pressures()
-        
+
+        return dTdt
+    
+    def steady_solver(self, initialTemps):
+        dTdt = self.transient_solver(0, initialTemps)
+        #dTdt = (dTdt**2).sum()**0.5 #comment out for fsolve
+        #print(dTdt)
         return dTdt
         
 ###############################################################################
@@ -690,9 +710,9 @@ def convert_T_vector(T_vector, dims):
     return reactantTemps, utilityTemps, reactantPlateTemps, utilityPlateTemps
 
 
-reactant_inlet = [{'CO2': 95, 'H2O': 3, 'O2': 2}, 0.01, 1000, 1500000]
-utility_inlet = [{'H2O': 100}, 0.01, 800, 1000000]
-dimensions = [0.0015, 0.0015, 25, 25, 0.0011, 0.0021]
+reactant_inlet = [{'CO2': 100, 'H2O': 0, 'O2': 0}, 0.00702, 1000, 1500000]
+utility_inlet = [{'H2O': 100}, 0.005, 1000, 1000000]
+dimensions = [0.0015, 0.0015, 20, 35, 0.0011, 0.0021]
 
 exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
 
@@ -705,11 +725,85 @@ initial_temps = np.concatenate([initial_T_reactant.ravel(), initial_T_utility.ra
                                 initial_T_reactantPlate.ravel(), initial_T_utilityPlate.ravel()])
 
 t0 = time.time()
-solution = solve_ivp(exchanger.transient_solver, [0, 10000], initial_temps, method = 'BDF', t_eval = [0, 1, 10, 100, 1000, 10000])
+
+for i in range(1):
+    exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
+    solution = solve_ivp(exchanger.transient_solver, [0, 10000], initial_temps, method = 'BDF', t_eval = [0, 1, 10, 100, 1000, 10000])
 tend = time.time()
 
-print('time to solve to steady-state:', tend-t0, 's')
+print('time to solve to steady-state with BDF:', tend-t0, 's')
+
+exchanger.update_pressures()
+
+solution = solve_ivp(exchanger.transient_solver, [0, 10000], solution['y'][:, -1], method = 'BDF', t_eval = [0, 10000])
+
+exchanger.update_pressures()
 
 T_reactant, T_utility, T_reactant_plate, T_utility_plate = convert_T_vector(solution['y'][:, -1], dimensions)
 P_reactant = exchanger.reactant_P.min()
 P_utility = exchanger.utility_P.min()
+
+# t1 = time.time()
+# for i in range(1):
+#     exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
+#     sol_fsolve = fsolve(exchanger.steady_solver, initial_temps)#initial_temps)
+# tend = time.time()
+# print('time to solve to steady-state with fsolve: ', tend-t1, 's')
+
+# deltas_fsolve = abs((solution['y'][:, -1] - sol_fsolve))
+
+
+
+#cons = LinearConstraint(initial_temps, utility_inlet[2], reactant_inlet[2])
+#cons2 = {'type': 'ineq', 'fun': cons}
+#bnds = Bounds(utility_inlet[2], reactant_inlet[2])
+
+# sol_min = minimize(exchanger.steady_solver, 
+#                    initial_temps, 
+#                    method = 'SLSQP', 
+#                    options = {'maxiter': 1000, 'disp': True},
+#                    bounds = bnds)
+
+#SLSQP: 49.95 resid, 687 iter, 278283 evals, 312.4s 
+######### w/ eps = 1: high resid, 410201 evals, 660s
+#trust-constr: 69.5 resid, 1000 iter, 564207 evals, 496.9s 
+
+# t2 = time.time()
+# for i in range(1):
+#     exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
+#     sol_root = root(exchanger.steady_solver, initial_temps)
+# tend = time.time()
+# print('time to solve to steady-state with root: ', tend - t2, 's')
+# deltas_root = abs((solution['y'][:, -1] - sol_root['x']))
+
+# t3= time.time()
+# for i in range(2):
+#     exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
+#     sol_root_krylov = root(exchanger.steady_solver, initial_temps, method='Krylov')
+# tend = time.time()
+# print('time to solve to steady-state with root/Krylov: ', tend - t3, 's')
+# deltas_root = abs((solution['y'][:, -1] - sol_root_krylov['x']))
+
+
+# t4 = time.time()
+# for i in range(1):
+#     exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
+#     solution = solve_ivp(exchanger.transient_solver, [0, 10000], initial_temps, method = 'LSODA', t_eval = [0, 1, 10, 100, 1000, 10000])
+# tend = time.time()
+
+# print('time to solve to steady-state with LSODA:', tend-t4, 's')
+
+# t5 = time.time()
+# for i in range(2):
+#     solution = solve_ivp(exchanger.transient_solver, [0, 10000], initial_temps, method = 'RK23', t_eval = [0, 1, 10, 100, 1000, 10000])
+# tend = time.time()
+
+# print('time to solve to steady-state with RK23:', tend-t5, 's')
+
+# t6= time.time()
+# for i in range(2):
+#     exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
+#     solution = solve_ivp(exchanger.transient_solver, [0, 10000], initial_temps, method = 'RK45', t_eval = [0, 1, 10, 100, 1000, 10000])
+# tend = time.time()
+
+# print('time to solve to steady-state with RK23:', tend-t6, 's')
