@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Wed May 5 12:57:19 2021
+Modified July 13 2021
 
 @author: afurlong
 
@@ -164,7 +165,7 @@ class crossflow_PCHE(object):
         self.GC = 8.3144626
         
         #create arrays to store speicifc heat capacities
-        self.cp_reactant, self.cp_utility= map(np.copy, [np.zeros((self.dimensions[2], self.dimensions[3]))]*2)
+        self.reactant_cp, self.utility_cp = map(np.copy, [np.zeros((self.dimensions[2], self.dimensions[3]))]*2)
         
         self.mol_frac_and_cp()
         
@@ -318,12 +319,12 @@ class crossflow_PCHE(object):
         turbulent = np.greater(reynolds, 2300)
         
         laminar_f = ((3.44 * Lplus**-0.5)**2 + (12 / (self.aspectratio**0.5 * (1 + self.aspectratio) * (1 - 192*self.aspectratio * math.pi**-5 * math.tanh(math.pi / (2*self.aspectratio)))))**2)**0.5/reynolds
-        turbulent_f = (0.79*np.log(reynolds) - 1.64)**-2/8
+        turbulent_f = (0.79*np.log(reynolds) - 1.64)**-2/4
         frictionfactor = laminar*laminar_f + turbulent*turbulent_f
         
         #this might need np.power instead of exponents
         nusselt_laminar = ((self.C4*fPr/zstar**0.5)**m + ((self.C2*self.C3*(laminar_f*reynolds/zstar)**(1/3))**5 + (self.C1*(laminar_f*reynolds/(8*math.pi**0.5*self.aspectratio**self.gamma)))**5)**(m/5))**(1/m)
-        nusselt_turbulent = (turbulent_f*(reynolds-1000)*Pr)/(1+12.7*turbulent_f**0.5 * (Pr**(2/3) - 1))
+        nusselt_turbulent = ((turbulent_f/2)*(reynolds-1000)*Pr)/(1+12.7*(turbulent_f/2)**0.5 * (Pr**(2/3) - 1))
         nusselt = laminar*nusselt_laminar + turbulent*nusselt_turbulent
         
         # if np.isnan(nusselt).any() == True or np.isnan(frictionfactor).any() == True:
@@ -585,10 +586,10 @@ class crossflow_PCHE(object):
         else:
             self.reactant_P = np.roll(self.reactant_P, 1, 1) - deltaP_reactant
             self.reactant_P[:, 0] = self.reactant[3] - deltaP_reactant[:, 0]
-            self.utility_P = np.roll(self.utility_P, 0, 1) - deltaP_utility
+            self.utility_P = np.roll(self.utility_P, 1, 0) - deltaP_utility
             self.utility_P[0, :] = self.utility[3] - deltaP_utility[0, :]
             
-        print(self.reactant_P)
+        #print(self.reactant_P)
     
         return
     
@@ -689,7 +690,7 @@ class crossflow_PCHE(object):
         #wrap up dT/dt as a vector for use in solve ivp
         dTdt = np.concatenate([dTdt_reactant.ravel(), dTdt_utility.ravel(), 
                                dTdt_reactantPlate.ravel(), dTdt_utilityPlate.ravel()])
-
+        #self.update_pressures()
         return dTdt
     
     def steady_solver(self, initialTemps):
@@ -710,7 +711,7 @@ def convert_T_vector(T_vector, dims):
     return reactantTemps, utilityTemps, reactantPlateTemps, utilityPlateTemps
 
 
-reactant_inlet = [{'CO2': 100, 'H2O': 0, 'O2': 0}, 0.00702, 1000, 1500000]
+reactant_inlet = [{'CO2': 100, 'H2O': 0, 'O2': 0}, 0.00702/5, 1000, 1500000]
 utility_inlet = [{'H2O': 100}, 0.005, 1000, 1000000]
 dimensions = [0.0015, 0.0015, 20, 35, 0.0011, 0.0021]
 
@@ -725,19 +726,15 @@ initial_temps = np.concatenate([initial_T_reactant.ravel(), initial_T_utility.ra
                                 initial_T_reactantPlate.ravel(), initial_T_utilityPlate.ravel()])
 
 t0 = time.time()
+solution = solve_ivp(exchanger.transient_solver, [0, 10000], initial_temps, method = 'BDF', t_eval = [0, 1, 10, 100, 1000, 10000])
 
-for i in range(1):
-    exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
-    solution = solve_ivp(exchanger.transient_solver, [0, 10000], initial_temps, method = 'BDF', t_eval = [0, 1, 10, 100, 1000, 10000])
+for i in range(10):
+    solution = solve_ivp(exchanger.transient_solver, [0, 10000], solution['y'][:, -1], method = 'BDF', t_eval = [0, 1, 10, 100, 1000, 10000])
+    exchanger.update_pressures()
 tend = time.time()
 
 print('time to solve to steady-state with BDF:', tend-t0, 's')
 
-exchanger.update_pressures()
-
-solution = solve_ivp(exchanger.transient_solver, [0, 10000], solution['y'][:, -1], method = 'BDF', t_eval = [0, 10000])
-
-exchanger.update_pressures()
 
 T_reactant, T_utility, T_reactant_plate, T_utility_plate = convert_T_vector(solution['y'][:, -1], dimensions)
 P_reactant = exchanger.reactant_P.min()
