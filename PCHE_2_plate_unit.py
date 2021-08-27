@@ -80,8 +80,8 @@ class crossflow_PCHE(object):
         #set dimensions - cross sectional area
         self.reactant_cs = math.pi*self.dimensions[0]**2/8
         self.utility_cs = math.pi*self.dimensions[1]**2/8
-        self.reactant_sqrtA = self.reactant_cs**0.5
-        self.utility_sqrtA = self.utility_cs**0.5
+        self.reactant_dh = math.pi*self.dimensions[0]/(2+math.pi)#self.reactant_cs**0.5
+        self.utility_dh = math.pi*self.dimensions[1]/(2+math.pi)#self.utility_cs**0.5
         
         #aspect ratio for semicircular channels
         self.aspectratio = 0.5
@@ -124,42 +124,231 @@ class crossflow_PCHE(object):
         self.metalk = 50
         
         #setup for initial viscosity parameters
-        self.MW_list = {'H2': 2.016, 'Air': 28.964, 'N2': 28.013, 'O2': 31.999, 
-                   'CO':28.010, 'CO2': 44.010, 'NO': 30.006, 'N2O': 44.012, 
-                   'SO2': 64.065, 'CH4': 16.04, 'C2H2': 26.04, 'C2H4': 28.05, 
-                   'C2H6':30.07, 'H2O': 18.02}
-        
-        self.sigma_list = {'H2': 2.915, 'Air': 3.617, 'N2': 3.667, 'O2': 3.433, 
-                      'CO':3.590, 'CO2': 3.996, 'NO': 3.470, 'N2O': 3.879, 
-                      'SO2': 4.026, 'CH4': 3.780, 'C2H2': 4.114, 'C2H4': 4.228,
-                      'C2H6': 4.388, 'H2O': 2.725}
-        
-        self.epsOverKappa_list = {'H2': 38.0, 'Air': 97.0, 'N2': 99.8, 'O2': 113, 
-                             'CO':110, 'CO2': 190, 'NO': 119, 'N2O': 220, 
-                             'SO2': 363, 'CH4': 154, 'C2H2': 212, 'C2H4': 216, 
-                             'C2H6': 232, 'H2O': 358.38}
-        
-        self.cp_a_list = {'H2': 3.249, 'Air': 3.355, 'N2': 3.280, 'O2': 3.639, 
-                             'CO':3.376, 'CO2': 5.457, 'NO': 3.387, 'N2O': 5.328, 
-                             'SO2': 5.699, 'CH4': 1.702, 'C2H2': 6.132, 
-                             'C2H4': 1.424, 'C2H6': 1.131, 'H2O': 3.470}
-        
-        self.cp_b_list = {'H2': 0.422/1000, 'Air': 0.575/1000, 'N2': 0.593/1000, 
-                          'O2': 0.506/1000, 'CO':0.557/1000, 'CO2': 1.045/1000,
-                          'NO': 0.629/1000, 'N2O': 1.214/1000, 'SO2': 0.801/1000, 
-                          'CH4': 9.081/1000, 'C2H2': 1.952/1000, 'C2H4': 14.394/1000, 
-                          'C2H6': 19.225/1000, 'H2O': 1.450/1000}
-        
-        self.cp_c_list = {'H2': 0, 'Air': 0, 'N2': 0, 'O2': 0, 'CO':0, 'CO2': 0,
-                          'NO': 0, 'N2O': 0, 'SO2': 0, 'CH4': -2.164/1000000, 
-                          'C2H2': 0, 'C2H4': -4.392/1000000, 'C2H6': -5.561/1000000, 
-                          'H2O': 0}
-        
-        self.cp_d_list = {'H2': 0.083*100000, 'Air': -0.016*100000, 'N2': 0.040*100000, 
-                          'O2': -0.227*100000, 'CO':-0.031*100000, 'CO2': -1.157*100000, 
-                          'NO': 0.014*100000, 'N2O': -0.928*100000, 'SO2': -1.015*100000, 
-                          'CH4': 0, 'C2H2': -1.299*100000, 'C2H4': 0, 'C2H6': 0, 
-                          'H2O': 0.121*100000}
+
+        #data collected from GRI3.0
+        #species must be sorted in the same order
+        #low = 300K < T < 1000 K, high = 1000 K < T < 3500 K
+        self.cp_a1_list_low = {'O2':  3.78245636,
+                               'H2': 2.34433112, 
+                               'OH': 3.99201543,
+                               'H2O': 4.19864056,
+                               'CH4': 5.14987613,
+                               'CO': 3.57953347,
+                               'CO2': 2.35677352,
+                               'CH3OH': 5.71539582,
+                               'C2H2': 0.808681094,
+                               'C2H4': 3.95920148,
+                               'C2H6': 4.29142492,
+                               'N2O': 2.2571502,
+                               'NO': 4.2184763,
+                               'NO2': 3.9440312,
+                               'N2': 3.298677, 
+                               'AR': 2.5,
+                               'C3H8': 0.93355381}
+        self.cp_a1_list_high = {'O2':  3.28253784,
+                               'H2': 3.3372792, 
+                               'OH': 3.09288767,
+                               'H2O': 3.03399249,
+                               'CH4': 0.0074851495,
+                               'CO': 2.71518561,
+                               'CO2': 3.85746029,
+                               'CH3OH': 1.78970791,
+                               'C2H2': 4.14756964,
+                               'C2H4': 2.03611116,
+                               'C2H6': 1.0718815,
+                               'N2O': 4.8230729,
+                               'NO': 3.2606056,
+                               'NO2': 4.8847542,
+                               'N2': 2.92664, 
+                               'AR': 2.5,
+                               'C3H8': 7.5341368}
+        self.cp_a2_list_low = {'O2':  -2.99673416/1000,
+                               'H2': 7.98052075/1000, 
+                               'OH': -2.40131752/1000,
+                               'H2O': -2.03643410/1000,
+                               'CH4': -1.36709788/100,
+                               'CO': -6.40353680/10000,
+                               'CO2': 8.98459677/1000,
+                               'CH3OH': -1.523092129/100,
+                               'C2H2': 2.33615629/100,
+                               'C2H4': -7.57052247/1000,
+                               'C2H6': -5.50154270/1000,
+                               'N2O': 0.11304728/10,
+                               'NO': -0.46389760/100,
+                               'NO2': -0.1585429/100,
+                               'N2': 0.14082404/100, 
+                               'AR': 0,
+                               'C3H8': 0.26424579/10}
+        self.cp_a2_list_high = {'O2':  1.48308754/1000,
+                               'H2': -4.94024731/100000, 
+                               'OH': 5.48429716/10000,
+                               'H2O': 2.17691804/1000,
+                               'CH4': 1.33909467/100,
+                               'CO': 2.06252743/1000,
+                               'CO2': 4.41437026/1000,
+                               'CH3OH': 1.40938292/100,
+                               'C2H2': 5.96166664/1000,
+                               'C2H4': 1.46454151/100,
+                               'C2H6': 2.16852677/100,
+                               'N2O': 0.26270251/100,
+                               'NO': 0.11911043/100,
+                               'NO2': 0.21723956/100,
+                               'N2': 0.14879768/100, 
+                               'AR': 0,
+                               'C3H8': 0.18872239/10}
+        self.cp_a3_list_low = {'O2':  9.84730201/(10**6),
+                               'H2': -1.94781510/(10**5), 
+                               'OH': 4.61793841/(10**6),
+                               'H2O': 6.52040211/(10**6),
+                               'CH4': 4.91800599/(10**5),
+                               'CO': 1.01681433/(10**6),
+                               'CO2': -7.12356269/(10**6),
+                               'CH3OH': 6.52441155/(10**5),
+                               'C2H2': -3.55171815/(10**5),
+                               'C2H4': 5.70990292/(10**5),
+                               'C2H6': 5.99438288/(10**5),
+                               'N2O': -0.13671319/(10**4),
+                               'NO': 0.11041022/(10**4),
+                               'NO2': 0.16657812/(10**4),
+                               'N2': -0.03963222/(10**4), 
+                               'AR': 0,
+                               'C3H8': 0.61059727/(10**5)}
+        self.cp_a3_list_high = {'O2':  -7.57966669/(10**7),
+                               'H2': 4.99456778/(10**7), 
+                               'OH': 1.26505228/(10**7),
+                               'H2O': -1.64072518/(10**7),
+                               'CH4': -5.73285809/(10**6),
+                               'CO': -9.98825771/(10**7),
+                               'CO2': -2.21481404/(10**6),
+                               'CH3OH': -6.36500835/(10**6),
+                               'C2H2': -2.37294852/(10**6),
+                               'C2H4': -6.71077915/(10**6),
+                               'C2H6': -1.00256067/(10**5),
+                               'N2O': -0.95850874/(10**6),
+                               'NO': -0.42917048/(10**6),
+                               'NO2': -0.82806906/(10**6),
+                               'N2': -0.05684760/(10**5), 
+                               'AR': 0,
+                               'C3H8': -0.62718491/(10**5)}
+        self.cp_a4_list_low = {'O2':  -9.68129509/(10**9),
+                               'H2': 2.01572094/(10**8), 
+                               'OH': -3.88113333/(10**9),
+                               'H2O': -5.48797062/(10**9),
+                               'CH4': -4.844743026/(10**8),
+                               'CO': 9.07005884/(10**10),
+                               'CO2': 2.45919022/(10**9),
+                               'CH3OH': -7.10806889/(10**8),
+                               'C2H2': 2.80152437/(10**8),
+                               'C2H4': -6.91588753/(10**8),
+                               'C2H6': -7.08466285/(10**8),
+                               'N2O': 0.96819806/(10**8),
+                               'NO': -0.93361354/(10**8),
+                               'NO2': -0.20475426/(10**7),
+                               'N2': 0.05641515/(10**7), 
+                               'AR': 0,
+                               'C3H8': -0.21977499/(10**7)}
+        self.cp_a4_list_high = {'O2':  2.09470555/(10**10),
+                               'H2': -1.79566394/(10**10), 
+                               'OH': -8.79461556/(10**11),
+                               'H2O': -9.7041987/(10**11),
+                               'CH4': 1.22292535/(10**9),
+                               'CO': 2.30053008/(10**10),
+                               'CO2': 5.23490188/(10**10),
+                               'CH3OH': 1.38171085/(10**9),
+                               'C2H2': -4.67412171/(10**10),
+                               'C2H4': 1.47222923/(10**9),
+                               'C2H6': 2.21412001/(10**9),
+                               'N2O': 0.16000712/(10**9),
+                               'NO': 0.69457669/(10**10),
+                               'NO2': 0.15747510/(10**9),
+                               'N2': 0.10097038/(10**9), 
+                               'AR': 0,
+                               'C3H8': 0.91475649/(10**9)}
+        self.cp_a5_list_low = {'O2':  3.24372839/(10**12),
+                               'H2': -7.37611761/(10**12), 
+                               'OH': 1.3641147/(10**12),
+                               'H2O': 1.77197817/(10**12),
+                               'CH4': 1.66693956/(10**11),
+                               'CO': -9.04424499/(10**13),
+                               'CO2': -1.43699548/(10**13),
+                               'CH3OH': 2.61352698/(10**11),
+                               'C2H2': -8.50072974/(10**12),
+                               'C2H4': 2.6984373/(10**11),
+                               'C2H6': 2.68685771/(10**11),
+                               'N2O': -0.29307182/(10**11),
+                               'NO': 0.28035770/(10**11),
+                               'NO2': 0.78350564/(10**11),
+                               'N2': -0.02444854/(10**10), 
+                               'AR': 0,
+                               'C3H8': 0.95149253/(10**11)}
+        self.cp_a5_list_high = {'O2':  -2.16717794/(10**14),
+                               'H2': 2.00255376/(10**14), 
+                               'OH': 1.17412376/(10**14),
+                               'H2O':1.68200992/(10**14),
+                               'CH4': -1.01815230/(10**13),
+                               'CO': -2.03647716/(10**14),
+                               'CO2': -4.72084164/(10**14),
+                               'CH3OH': -1.17060220/(10**13),
+                               'C2H2': -3.61235213/(10**14),
+                               'C2H4': -1.25706061/(10**13),
+                               'C2H6': -1.90002890/(10**13),
+                               'N2O': -0.97752303/(10**14),
+                               'NO': -0.40336099/(10**14),
+                               'NO2': -0.10510895/(10**13),
+                               'N2': -0.06753351/(10**13), 
+                               'AR': 0,
+                               'C3H8': -0.47838069/(10**13)}
+        self.MW_list =        {'O2':  31.9988,
+                               'H2': 2.016, 
+                               'OH': 17.00734,
+                               'H2O':18.01528,
+                               'CH4': 16.04246,
+                               'CO': 28.0101,
+                               'CO2': 44.0095,
+                               'CH3OH': 32.04186,
+                               'C2H2': 26.03728,
+                               'C2H4': 28.05316,
+                               'C2H6': 30.06904,
+                               'N2O': 44.0128,
+                               'NO': 30.0061,
+                               'NO2': 46.0055,
+                               'N2': 28.0138, 
+                               'AR': 39.948,
+                               'C3H8': 44.09562}
+        self.sigma_list =     {'O2':  3.458,
+                               'H2': 2.920, 
+                               'OH': 2.750,
+                               'H2O': 2.605,
+                               'CH4': 3.746,
+                               'CO': 3.650,
+                               'CO2': 3.763,
+                               'CH3OH': 3.626,
+                               'C2H2': 4.100,
+                               'C2H4': 3.971,
+                               'C2H6': 4.982,
+                               'N2O': 3.828,
+                               'NO': 3.621,
+                               'NO2': 3.500,
+                               'N2': 3.621, 
+                               'AR': 3.330,
+                               'C3H8': 4.982}
+        self.epsOverKappa_list = {'O2':  107.4,
+                               'H2': 38.000, 
+                               'OH': 80.000,
+                               'H2O': 572.400,
+                               'CH4': 141.400,
+                               'CO': 98.100,
+                               'CO2': 244.000,
+                               'CH3OH': 481.800,
+                               'C2H2': 209.000,
+                               'C2H4': 280.800,
+                               'C2H6': 252.300,
+                               'N2O': 232.400,
+                               'NO': 97.530,
+                               'NO2': 200.000,
+                               'N2': 97.530, 
+                               'AR': 136.500,
+                               'C3H8': 266.800}
         
         #ideal gas constant - J mol-1 K-1
         self.GC = 8.3144626
@@ -167,7 +356,7 @@ class crossflow_PCHE(object):
         #create arrays to store speicifc heat capacities
         self.reactant_cp, self.utility_cp = map(np.copy, [np.zeros((self.dimensions[2], self.dimensions[3]))]*2)
         
-        self.mol_frac_and_cp()
+        #self.mol_frac_and_cp()
         
         #set up positions for dimensionless length correlations
         #use center of each unit cell
@@ -206,37 +395,45 @@ class crossflow_PCHE(object):
         nmol_utility = np.zeros(len(utility_species))
         
         #reset constants for specific heat capacities
-        self.cp_a_reactant = 0
-        self.cp_b_reactant = 0
-        self.cp_c_reactant = 0
-        self.cp_d_reactant = 0
-        self.cp_a_utility = 0
-        self.cp_b_utility = 0
-        self.cp_c_utility = 0
-        self.cp_d_utility = 0        
+        self.cp_a1_reactant = 0
+        self.cp_a2_reactant = 0
+        self.cp_a3_reactant = 0
+        self.cp_a4_reactant = 0
+        self.cp_a5_reactant = 0
+        self.cp_a1_utility = 0
+        self.cp_a2_utility = 0
+        self.cp_a3_utility = 0
+        self.cp_a4_utility = 0        
+        self.cp_a5_utility = 0        
 
         
         for i in range(len(reactant_species)):
             nmol_reactant[i] = self.reactant[0][reactant_species[i]]/self.MW_list[reactant_species[i]]
-            self.cp_a_reactant = self.cp_a_reactant + nmol_reactant[i]*self.cp_a_list[reactant_species[i]]
-            self.cp_b_reactant = self.cp_b_reactant + nmol_reactant[i]*self.cp_b_list[reactant_species[i]]
-            self.cp_c_reactant = self.cp_c_reactant + nmol_reactant[i]*self.cp_c_list[reactant_species[i]]
-            self.cp_d_reactant = self.cp_d_reactant + nmol_reactant[i]*self.cp_d_list[reactant_species[i]]
+            self.cp_a1_reactant = self.cp_a1_reactant + nmol_reactant[i]*(self.cp_a1_list_low[reactant_species[i]]*np.less_equal(self.reactant_T, 1000) + self.cp_a1_list_high[reactant_species[i]]*np.greater(self.reactant_T, 1000)) 
+            self.cp_a2_reactant = self.cp_a2_reactant + nmol_reactant[i]*(self.cp_a2_list_low[reactant_species[i]]*np.less_equal(self.reactant_T, 1000) + self.cp_a2_list_high[reactant_species[i]]*np.greater(self.reactant_T, 1000)) 
+            self.cp_a3_reactant = self.cp_a3_reactant + nmol_reactant[i]*(self.cp_a3_list_low[reactant_species[i]]*np.less_equal(self.reactant_T, 1000) + self.cp_a3_list_high[reactant_species[i]]*np.greater(self.reactant_T, 1000)) 
+            self.cp_a4_reactant = self.cp_a4_reactant + nmol_reactant[i]*(self.cp_a4_list_low[reactant_species[i]]*np.less_equal(self.reactant_T, 1000) + self.cp_a4_list_high[reactant_species[i]]*np.greater(self.reactant_T, 1000)) 
+            self.cp_a5_reactant = self.cp_a5_reactant + nmol_reactant[i]*(self.cp_a5_list_low[reactant_species[i]]*np.less_equal(self.reactant_T, 1000) + self.cp_a5_list_high[reactant_species[i]]*np.greater(self.reactant_T, 1000)) 
+
         for i in range(len(utility_species)):
             nmol_utility[i] = self.utility[0][utility_species[i]]/self.MW_list[utility_species[i]]
-            self.cp_a_utility = self.cp_a_utility + nmol_utility[i]*self.cp_a_list[utility_species[i]]
-            self.cp_b_utility = self.cp_b_utility + nmol_utility[i]*self.cp_b_list[utility_species[i]]
-            self.cp_c_utility = self.cp_c_utility + nmol_utility[i]*self.cp_c_list[utility_species[i]]
-            self.cp_d_utility = self.cp_d_utility + nmol_utility[i]*self.cp_d_list[utility_species[i]]
+            self.cp_a1_utility = self.cp_a1_utility + nmol_utility[i]*(self.cp_a1_list_low[utility_species[i]]*np.less_equal(self.utility_T, 1000) + self.cp_a1_list_high[utility_species[i]]*np.greater(self.utility_T, 1000)) 
+            self.cp_a2_utility = self.cp_a2_utility + nmol_utility[i]*(self.cp_a2_list_low[utility_species[i]]*np.less_equal(self.utility_T, 1000) + self.cp_a2_list_high[utility_species[i]]*np.greater(self.utility_T, 1000)) 
+            self.cp_a3_utility = self.cp_a3_utility + nmol_utility[i]*(self.cp_a3_list_low[utility_species[i]]*np.less_equal(self.utility_T, 1000) + self.cp_a3_list_high[utility_species[i]]*np.greater(self.utility_T, 1000)) 
+            self.cp_a4_utility = self.cp_a4_utility + nmol_utility[i]*(self.cp_a4_list_low[utility_species[i]]*np.less_equal(self.utility_T, 1000) + self.cp_a4_list_high[utility_species[i]]*np.greater(self.utility_T, 1000)) 
+            self.cp_a5_utility = self.cp_a5_utility + nmol_utility[i]*(self.cp_a5_list_low[utility_species[i]]*np.less_equal(self.utility_T, 1000) + self.cp_a5_list_high[utility_species[i]]*np.greater(self.utility_T, 1000)) 
 
-        self.cp_a_reactant = self.cp_a_reactant/nmol_reactant.sum()
-        self.cp_b_reactant = self.cp_b_reactant/nmol_reactant.sum()
-        self.cp_c_reactant = self.cp_c_reactant/nmol_reactant.sum()
-        self.cp_d_reactant = self.cp_d_reactant/nmol_reactant.sum()
-        self.cp_a_utility = self.cp_a_utility/nmol_utility.sum()
-        self.cp_b_utility = self.cp_b_utility/nmol_utility.sum()
-        self.cp_c_utility = self.cp_c_utility/nmol_utility.sum()
-        self.cp_d_utility = self.cp_d_utility/nmol_utility.sum()
+        self.cp_a1_reactant = self.cp_a1_reactant/nmol_reactant.sum()
+        self.cp_a2_reactant = self.cp_a2_reactant/nmol_reactant.sum()
+        self.cp_a3_reactant = self.cp_a3_reactant/nmol_reactant.sum()
+        self.cp_a4_reactant = self.cp_a4_reactant/nmol_reactant.sum()
+        self.cp_a5_reactant = self.cp_a5_reactant/nmol_reactant.sum()
+
+        self.cp_a1_utility = self.cp_a1_utility/nmol_utility.sum()
+        self.cp_a2_utility = self.cp_a2_utility/nmol_utility.sum()
+        self.cp_a3_utility = self.cp_a3_utility/nmol_utility.sum()
+        self.cp_a4_utility = self.cp_a4_utility/nmol_utility.sum()
+        self.cp_a5_utility = self.cp_a5_utility/nmol_utility.sum()
         
         reactant_molefrac = np.divide(nmol_reactant, nmol_reactant.sum())
         utility_molefrac = np.divide(nmol_utility, nmol_utility.sum())
@@ -300,14 +497,14 @@ class crossflow_PCHE(object):
             reynolds = self.reactant_Re
             
             Pr = self.reactant_Pr
-            zstar = (self.reactant_L/self.reactant_sqrtA)/(reynolds*Pr)
+            zstar = (self.reactant_L/self.reactant_dh)/(reynolds*Pr)
             
         elif fluid == 'utility':
             Lplus = (self.utility_mu.transpose()*self.utility_L).transpose()/(self.utility[1]/self.columns)
             reynolds = self.utility_Re
             
             Pr = self.utility_Pr
-            zstar = ((self.utility_L/self.reactant_sqrtA)/((reynolds*Pr).transpose())).transpose()
+            zstar = ((self.utility_L/self.reactant_dh)/((reynolds*Pr).transpose())).transpose()
                  
         else:
             print('Incorrect fluid selected for friction factor!')
@@ -378,7 +575,7 @@ class crossflow_PCHE(object):
             molfractions = self.reactant_molefrac
             temperatures = self.reactant_T
             self.reactant_rho = self.reactant_P*self.reactant_MW/self.GC/self.reactant_T/1000
-            self.reactant_cp = self.cp_a_reactant + self.cp_b_reactant*temperatures + self.cp_c_reactant*np.power(temperatures, 2) + self.cp_d_reactant*np.power(temperatures, -2)
+            self.reactant_cp = self.cp_a1_reactant + self.cp_a2_reactant*temperatures + self.cp_a3_reactant*np.power(temperatures, 2) + self.cp_a4_reactant*np.power(temperatures, 3) + self.cp_a5_reactant*np.power(temperatures, 4)
             self.reactant_cp = self.reactant_cp*self.GC/self.reactant_MW*1000 #to J/mol K, to J/kg K
             
         elif fluid == 'utility':
@@ -386,7 +583,7 @@ class crossflow_PCHE(object):
             molfractions = self.utility_molefrac
             temperatures = self.utility_T
             self.utility_rho = self.utility_P*self.utility_MW/self.GC/self.utility_T/1000
-            self.utility_cp = self.cp_a_utility + self.cp_b_utility*temperatures + self.cp_c_utility*np.power(temperatures, 2) + self.cp_d_utility*np.power(temperatures, -2)
+            self.utility_cp = self.cp_a1_utility + self.cp_a2_utility*temperatures + self.cp_a3_utility*np.power(temperatures, 2) + self.cp_a4_utility*np.power(temperatures, 3) + self.cp_a5_utility*np.power(temperatures, 4)
             self.utility_cp = self.utility_cp*self.GC/self.utility_MW*1000 #to J/mol K, to J/kg K
 
         else:
@@ -410,25 +607,37 @@ class crossflow_PCHE(object):
             Tstar[:, :, i] = temperatures/self.epsOverKappa_list[species[i]]
             omega[:, :, i] = 1.16145/(np.power(Tstar[:, :, i], 0.14874)) + 0.52487/(np.exp(0.77320*Tstar[:, :, i])) + 2.16178/(np.exp(2.43787*Tstar[:, :, i]))
             viscosity[:, :, i] = (2.6693 * (10**(-5)) * np.sqrt(self.MW_list[species[i]]*temperatures) / (self.sigma_list[species[i]]**2 * omega[:, :, i]))*98.0665/1000
+            #viscosity[:, :, i] = 5/16*(math.pi*self.MW_list[species[i]]*temperatures*4.788*10**-21)/(omega[:, :, i]*math.pi*self.sigma_list[species[i]]**2)
+            #viscosity[:, :, i] = 5/16*(math.pi*self.MW_list[species[i]]*1.38064852*10**(-16)*temperatures)**0.5/(math.pi*self.sigma_list[species[i]]**2*omega[:, :, i])*(10**15)           
 
         for i in range(nspecies):
-            cpi[:, :, i] = self.cp_a_list[species[i]] + self.cp_b_list[species[i]]*temperatures + self.cp_c_list[species[i]]*np.power(temperatures, 2) + self.cp_d_list[species[i]]*np.power(temperatures, -2)
+            cpi[:, :, i] = (self.cp_a1_list_low[species[i]]*np.less_equal(temperatures, 1000) + self.cp_a1_list_high[species[i]]*np.greater(temperatures, 1000)) + \
+                            (self.cp_a2_list_low[species[i]]*np.less_equal(temperatures, 1000) + self.cp_a2_list_high[species[i]]*np.greater(temperatures, 1000))*temperatures + \
+                            (self.cp_a3_list_low[species[i]]*np.less_equal(temperatures, 1000) + self.cp_a3_list_high[species[i]]*np.greater(temperatures, 1000))*np.power(temperatures, 2) + \
+                            (self.cp_a4_list_low[species[i]]*np.less_equal(temperatures, 1000) + self.cp_a4_list_high[species[i]]*np.greater(temperatures, 1000))*np.power(temperatures, 3) + \
+                            (self.cp_a5_list_low[species[i]]*np.less_equal(temperatures, 1000) + self.cp_a5_list_high[species[i]]*np.greater(temperatures, 1000))*np.power(temperatures, 4)
+            
+            #cpi[:, :, i] = self.cp_a_list[species[i]] + self.cp_b_list[species[i]]*temperatures + self.cp_c_list[species[i]]*np.power(temperatures, 2) + self.cp_d_list[species[i]]*np.power(temperatures, -2)
             ki[:, :, i] = (cpi[:, :, i] + 5/4)*8314.4626*viscosity[:, :, i]/self.MW_list[species[i]]
                     
         #calculate values of phi for each interaction -- use 3D array with one 2D array for every pair
         #this is made exponentially slower for every added species
         for i in range(nspecies):
             for j in range(nspecies):
-                phi[:, :, nspecies*i + j] = 1/(8**0.5) * (1 + self.MW_list[species[i]]/self.MW_list[species[j]])**-0.5 * (1 + (viscosity[:, :, i]/viscosity[:, :, j])**0.5 * (self.MW_list[species[j]]/self.MW_list[species[i]])**0.25)**2
-
+                #phi[:, :, nspecies*i + j] = 1/(8**0.5) * (1 + self.MW_list[species[i]]/self.MW_list[species[j]])**-0.5 * (1 + (viscosity[:, :, i]/viscosity[:, :, j])**0.5 * (self.MW_list[species[j]]/self.MW_list[species[i]])**0.25)**2
+                phi[:, :, nspecies*i + j] = (1+ (viscosity[:, :, i]/viscosity[:, :, j]*(self.MW_list[species[j]]/self.MW_list[species[i]])**0.5)**0.5)**2/(8**0.5 * (1+self.MW_list[species[i]]/self.MW_list[species[j]])**0.5)
+                
         #apply mixing rules
+        denominator_k = 0
         for i in  range(nspecies):
             denominator = 0
             for j in range(nspecies):
                 denominator = denominator + molfractions[species[j]]*phi[:, :, nspecies*i + j]
             viscosity_mixture = viscosity_mixture + molfractions[species[i]]*viscosity[:, :, i]/denominator
-            k_mixture = k_mixture + molfractions[species[i]]*ki[:, :, i]/denominator
-        
+            denominator_k = denominator_k + molfractions[species[i]]/ki[:, :, i]
+            #k_mixture = k_mixture + molfractions[species[i]]*ki[:, :, i]/denominator
+            k_mixture = k_mixture + 0.5*(molfractions[species[i]]*ki[:, :, i])
+        k_mixture = k_mixture + 0.5/denominator_k
         return viscosity_mixture, k_mixture
     
     def unwrap_T(self, Tvector):
@@ -567,8 +776,8 @@ class crossflow_PCHE(object):
         """
         
         #calculate losses via Bernoulli's equation
-        deltaP_reactant = 2*self.reactant_f*self.deltax/self.reactant_sqrtA*self.reactant_u**2*self.reactant_rho
-        deltaP_utility = 2*self.utility_f*self.deltaz/self.utility_sqrtA*self.utility_u**2*self.utility_rho
+        deltaP_reactant = 2*self.reactant_f*self.deltax/self.reactant_dh*self.reactant_u**2*self.reactant_rho
+        deltaP_utility = 2*self.utility_f*self.deltaz/self.utility_dh*self.utility_u**2*self.utility_rho
         #print(deltaP_reactant)
     
         #if the array is unchanged from its initial state, then initialize
@@ -620,7 +829,7 @@ class crossflow_PCHE(object):
         #start with extracting the initial temperature profile, setting dTdt to 0.
         self.reactant_T, self.utility_T, self.reactantPlate_T, self.utilityPlate_T = self.unwrap_T(T)
         dTdt_reactant, dTdt_utility, dTdt_reactantPlate, dTdt_utilityPlate = map(np.copy, [np.zeros((self.rows, self.columns))]*4)
-        
+        self.mol_frac_and_cp()
         #print(self.utility_T)
 
         
@@ -636,16 +845,16 @@ class crossflow_PCHE(object):
         self.reactant_Pr = self.reactant_mu*self.reactant_cp/self.reactant_k
         self.utility_Pr = self.utility_mu*self.utility_cp/self.utility_k
         
-        self.reactant_Re = self.reactant_rho*self.reactant_u*self.reactant_sqrtA/self.reactant_mu
-        self.utility_Re = self.utility_rho*self.utility_u*self.utility_sqrtA/self.utility_mu
+        self.reactant_Re = self.reactant_rho*self.reactant_u*self.reactant_dh/self.reactant_mu
+        self.utility_Re = self.utility_rho*self.utility_u*self.utility_dh/self.utility_mu
         
         #update friction factors
         self.reactant_f, self.reactant_Nu = self.ff_Nu('reactant')
         self.utility_f, self.utility_Nu = self.ff_Nu('utility')
         
         #calculate convective heat transfer coefficients
-        self.reactant_h = self.reactant_Nu*self.reactant_k/self.reactant_sqrtA
-        self.utility_h = self.utility_Nu*self.utility_k/self.utility_sqrtA
+        self.reactant_h = self.reactant_Nu*self.reactant_k/self.reactant_dh
+        self.utility_h = self.utility_Nu*self.utility_k/self.utility_dh
         
         #calculate heat transfer between fluids and plates
         #positive value = heat gained by CV
@@ -666,8 +875,8 @@ class crossflow_PCHE(object):
         
         #add intraplate conduction terms
         #conduction perpendicular to flow needs to be updated with shape factors
-        # self.Q_reactant_plate = self.Q_reactant_plate + self.intraplate_cond('reactant')
-        # self.Q_utility_plate = self.Q_utility_plate + self.intraplate_cond('utility')
+        #self.Q_reactant_plate = self.Q_reactant_plate + self.intraplate_cond('reactant')
+        #self.Q_utility_plate = self.Q_utility_plate + self.intraplate_cond('utility')
         
         #totalQ = self.Q_reactant_plate + self.Q_utility_plate + self.Q_reactant_fluid + self.Q_utility_fluid
         #print(totalQ.sum())
@@ -686,6 +895,8 @@ class crossflow_PCHE(object):
         advective_utility = self.utility_u*self.advective_transfer('utility')/self.deltaz        
         dTdt_reactant = dTdt_reactant + advective_reactant
         dTdt_utility = dTdt_utility + advective_utility
+        dTdt_reactantPlate = dTdt_reactantPlate + self.intraplate_cond('reactant')
+        dTdt_utilityPlate = dTdt_utilityPlate + self.intraplate_cond('utility')
         
         #wrap up dT/dt as a vector for use in solve ivp
         dTdt = np.concatenate([dTdt_reactant.ravel(), dTdt_utility.ravel(), 
@@ -711,9 +922,9 @@ def convert_T_vector(T_vector, dims):
     return reactantTemps, utilityTemps, reactantPlateTemps, utilityPlateTemps
 
 
-reactant_inlet = [{'CO2': 100, 'H2O': 0, 'O2': 0}, 0.00702/5, 1000, 1500000]
-utility_inlet = [{'H2O': 100}, 0.005, 1000, 1000000]
-dimensions = [0.0015, 0.0015, 20, 35, 0.0011, 0.0021]
+reactant_inlet = [{'CO2': 100}, 0.00702/5, 800, 1500000]
+utility_inlet = [{'CO2': 100}, 0.005, 800, 100000]
+dimensions = [0.0015, 0.0015, 2, 2, 0.0011, 0.0021]
 
 exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
 
@@ -728,7 +939,7 @@ initial_temps = np.concatenate([initial_T_reactant.ravel(), initial_T_utility.ra
 t0 = time.time()
 solution = solve_ivp(exchanger.transient_solver, [0, 10000], initial_temps, method = 'BDF', t_eval = [0, 1, 10, 100, 1000, 10000])
 
-for i in range(10):
+for i in range(1):
     solution = solve_ivp(exchanger.transient_solver, [0, 10000], solution['y'][:, -1], method = 'BDF', t_eval = [0, 1, 10, 100, 1000, 10000])
     exchanger.update_pressures()
 tend = time.time()
@@ -740,67 +951,4 @@ T_reactant, T_utility, T_reactant_plate, T_utility_plate = convert_T_vector(solu
 P_reactant = exchanger.reactant_P.min()
 P_utility = exchanger.utility_P.min()
 
-# t1 = time.time()
-# for i in range(1):
-#     exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
-#     sol_fsolve = fsolve(exchanger.steady_solver, initial_temps)#initial_temps)
-# tend = time.time()
-# print('time to solve to steady-state with fsolve: ', tend-t1, 's')
 
-# deltas_fsolve = abs((solution['y'][:, -1] - sol_fsolve))
-
-
-
-#cons = LinearConstraint(initial_temps, utility_inlet[2], reactant_inlet[2])
-#cons2 = {'type': 'ineq', 'fun': cons}
-#bnds = Bounds(utility_inlet[2], reactant_inlet[2])
-
-# sol_min = minimize(exchanger.steady_solver, 
-#                    initial_temps, 
-#                    method = 'SLSQP', 
-#                    options = {'maxiter': 1000, 'disp': True},
-#                    bounds = bnds)
-
-#SLSQP: 49.95 resid, 687 iter, 278283 evals, 312.4s 
-######### w/ eps = 1: high resid, 410201 evals, 660s
-#trust-constr: 69.5 resid, 1000 iter, 564207 evals, 496.9s 
-
-# t2 = time.time()
-# for i in range(1):
-#     exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
-#     sol_root = root(exchanger.steady_solver, initial_temps)
-# tend = time.time()
-# print('time to solve to steady-state with root: ', tend - t2, 's')
-# deltas_root = abs((solution['y'][:, -1] - sol_root['x']))
-
-# t3= time.time()
-# for i in range(2):
-#     exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
-#     sol_root_krylov = root(exchanger.steady_solver, initial_temps, method='Krylov')
-# tend = time.time()
-# print('time to solve to steady-state with root/Krylov: ', tend - t3, 's')
-# deltas_root = abs((solution['y'][:, -1] - sol_root_krylov['x']))
-
-
-# t4 = time.time()
-# for i in range(1):
-#     exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
-#     solution = solve_ivp(exchanger.transient_solver, [0, 10000], initial_temps, method = 'LSODA', t_eval = [0, 1, 10, 100, 1000, 10000])
-# tend = time.time()
-
-# print('time to solve to steady-state with LSODA:', tend-t4, 's')
-
-# t5 = time.time()
-# for i in range(2):
-#     solution = solve_ivp(exchanger.transient_solver, [0, 10000], initial_temps, method = 'RK23', t_eval = [0, 1, 10, 100, 1000, 10000])
-# tend = time.time()
-
-# print('time to solve to steady-state with RK23:', tend-t5, 's')
-
-# t6= time.time()
-# for i in range(2):
-#     exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
-#     solution = solve_ivp(exchanger.transient_solver, [0, 10000], initial_temps, method = 'RK45', t_eval = [0, 1, 10, 100, 1000, 10000])
-# tend = time.time()
-
-# print('time to solve to steady-state with RK23:', tend-t6, 's')
