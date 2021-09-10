@@ -21,6 +21,7 @@ import time
 from scipy.optimize import fsolve
 from scipy.optimize import root
 #import matplotlib.pyplot as plt
+import csv
 
 class crossflow_PCHE(object):
     """
@@ -128,227 +129,8 @@ class crossflow_PCHE(object):
         #data collected from GRI3.0
         #species must be sorted in the same order
         #low = 300K < T < 1000 K, high = 1000 K < T < 3500 K
-        self.cp_a1_list_low = {'O2':  3.78245636,
-                               'H2': 2.34433112, 
-                               'OH': 3.99201543,
-                               'H2O': 4.19864056,
-                               'CH4': 5.14987613,
-                               'CO': 3.57953347,
-                               'CO2': 2.35677352,
-                               'CH3OH': 5.71539582,
-                               'C2H2': 0.808681094,
-                               'C2H4': 3.95920148,
-                               'C2H6': 4.29142492,
-                               'N2O': 2.2571502,
-                               'NO': 4.2184763,
-                               'NO2': 3.9440312,
-                               'N2': 3.298677, 
-                               'AR': 2.5,
-                               'C3H8': 0.93355381}
-        self.cp_a1_list_high = {'O2':  3.28253784,
-                               'H2': 3.3372792, 
-                               'OH': 3.09288767,
-                               'H2O': 3.03399249,
-                               'CH4': 0.0074851495,
-                               'CO': 2.71518561,
-                               'CO2': 3.85746029,
-                               'CH3OH': 1.78970791,
-                               'C2H2': 4.14756964,
-                               'C2H4': 2.03611116,
-                               'C2H6': 1.0718815,
-                               'N2O': 4.8230729,
-                               'NO': 3.2606056,
-                               'NO2': 4.8847542,
-                               'N2': 2.92664, 
-                               'AR': 2.5,
-                               'C3H8': 7.5341368}
-        self.cp_a2_list_low = {'O2':  -2.99673416/1000,
-                               'H2': 7.98052075/1000, 
-                               'OH': -2.40131752/1000,
-                               'H2O': -2.03643410/1000,
-                               'CH4': -1.36709788/100,
-                               'CO': -6.40353680/10000,
-                               'CO2': 8.98459677/1000,
-                               'CH3OH': -1.523092129/100,
-                               'C2H2': 2.33615629/100,
-                               'C2H4': -7.57052247/1000,
-                               'C2H6': -5.50154270/1000,
-                               'N2O': 0.11304728/10,
-                               'NO': -0.46389760/100,
-                               'NO2': -0.1585429/100,
-                               'N2': 0.14082404/100, 
-                               'AR': 0,
-                               'C3H8': 0.26424579/10}
-        self.cp_a2_list_high = {'O2':  1.48308754/1000,
-                               'H2': -4.94024731/100000, 
-                               'OH': 5.48429716/10000,
-                               'H2O': 2.17691804/1000,
-                               'CH4': 1.33909467/100,
-                               'CO': 2.06252743/1000,
-                               'CO2': 4.41437026/1000,
-                               'CH3OH': 1.40938292/100,
-                               'C2H2': 5.96166664/1000,
-                               'C2H4': 1.46454151/100,
-                               'C2H6': 2.16852677/100,
-                               'N2O': 0.26270251/100,
-                               'NO': 0.11911043/100,
-                               'NO2': 0.21723956/100,
-                               'N2': 0.14879768/100, 
-                               'AR': 0,
-                               'C3H8': 0.18872239/10}
-        self.cp_a3_list_low = {'O2':  9.84730201/(10**6),
-                               'H2': -1.94781510/(10**5), 
-                               'OH': 4.61793841/(10**6),
-                               'H2O': 6.52040211/(10**6),
-                               'CH4': 4.91800599/(10**5),
-                               'CO': 1.01681433/(10**6),
-                               'CO2': -7.12356269/(10**6),
-                               'CH3OH': 6.52441155/(10**5),
-                               'C2H2': -3.55171815/(10**5),
-                               'C2H4': 5.70990292/(10**5),
-                               'C2H6': 5.99438288/(10**5),
-                               'N2O': -0.13671319/(10**4),
-                               'NO': 0.11041022/(10**4),
-                               'NO2': 0.16657812/(10**4),
-                               'N2': -0.03963222/(10**4), 
-                               'AR': 0,
-                               'C3H8': 0.61059727/(10**5)}
-        self.cp_a3_list_high = {'O2':  -7.57966669/(10**7),
-                               'H2': 4.99456778/(10**7), 
-                               'OH': 1.26505228/(10**7),
-                               'H2O': -1.64072518/(10**7),
-                               'CH4': -5.73285809/(10**6),
-                               'CO': -9.98825771/(10**7),
-                               'CO2': -2.21481404/(10**6),
-                               'CH3OH': -6.36500835/(10**6),
-                               'C2H2': -2.37294852/(10**6),
-                               'C2H4': -6.71077915/(10**6),
-                               'C2H6': -1.00256067/(10**5),
-                               'N2O': -0.95850874/(10**6),
-                               'NO': -0.42917048/(10**6),
-                               'NO2': -0.82806906/(10**6),
-                               'N2': -0.05684760/(10**5), 
-                               'AR': 0,
-                               'C3H8': -0.62718491/(10**5)}
-        self.cp_a4_list_low = {'O2':  -9.68129509/(10**9),
-                               'H2': 2.01572094/(10**8), 
-                               'OH': -3.88113333/(10**9),
-                               'H2O': -5.48797062/(10**9),
-                               'CH4': -4.844743026/(10**8),
-                               'CO': 9.07005884/(10**10),
-                               'CO2': 2.45919022/(10**9),
-                               'CH3OH': -7.10806889/(10**8),
-                               'C2H2': 2.80152437/(10**8),
-                               'C2H4': -6.91588753/(10**8),
-                               'C2H6': -7.08466285/(10**8),
-                               'N2O': 0.96819806/(10**8),
-                               'NO': -0.93361354/(10**8),
-                               'NO2': -0.20475426/(10**7),
-                               'N2': 0.05641515/(10**7), 
-                               'AR': 0,
-                               'C3H8': -0.21977499/(10**7)}
-        self.cp_a4_list_high = {'O2':  2.09470555/(10**10),
-                               'H2': -1.79566394/(10**10), 
-                               'OH': -8.79461556/(10**11),
-                               'H2O': -9.7041987/(10**11),
-                               'CH4': 1.22292535/(10**9),
-                               'CO': 2.30053008/(10**10),
-                               'CO2': 5.23490188/(10**10),
-                               'CH3OH': 1.38171085/(10**9),
-                               'C2H2': -4.67412171/(10**10),
-                               'C2H4': 1.47222923/(10**9),
-                               'C2H6': 2.21412001/(10**9),
-                               'N2O': 0.16000712/(10**9),
-                               'NO': 0.69457669/(10**10),
-                               'NO2': 0.15747510/(10**9),
-                               'N2': 0.10097038/(10**9), 
-                               'AR': 0,
-                               'C3H8': 0.91475649/(10**9)}
-        self.cp_a5_list_low = {'O2':  3.24372839/(10**12),
-                               'H2': -7.37611761/(10**12), 
-                               'OH': 1.3641147/(10**12),
-                               'H2O': 1.77197817/(10**12),
-                               'CH4': 1.66693956/(10**11),
-                               'CO': -9.04424499/(10**13),
-                               'CO2': -1.43699548/(10**13),
-                               'CH3OH': 2.61352698/(10**11),
-                               'C2H2': -8.50072974/(10**12),
-                               'C2H4': 2.6984373/(10**11),
-                               'C2H6': 2.68685771/(10**11),
-                               'N2O': -0.29307182/(10**11),
-                               'NO': 0.28035770/(10**11),
-                               'NO2': 0.78350564/(10**11),
-                               'N2': -0.02444854/(10**10), 
-                               'AR': 0,
-                               'C3H8': 0.95149253/(10**11)}
-        self.cp_a5_list_high = {'O2':  -2.16717794/(10**14),
-                               'H2': 2.00255376/(10**14), 
-                               'OH': 1.17412376/(10**14),
-                               'H2O':1.68200992/(10**14),
-                               'CH4': -1.01815230/(10**13),
-                               'CO': -2.03647716/(10**14),
-                               'CO2': -4.72084164/(10**14),
-                               'CH3OH': -1.17060220/(10**13),
-                               'C2H2': -3.61235213/(10**14),
-                               'C2H4': -1.25706061/(10**13),
-                               'C2H6': -1.90002890/(10**13),
-                               'N2O': -0.97752303/(10**14),
-                               'NO': -0.40336099/(10**14),
-                               'NO2': -0.10510895/(10**13),
-                               'N2': -0.06753351/(10**13), 
-                               'AR': 0,
-                               'C3H8': -0.47838069/(10**13)}
-        self.MW_list =        {'O2':  31.9988,
-                               'H2': 2.016, 
-                               'OH': 17.00734,
-                               'H2O':18.01528,
-                               'CH4': 16.04246,
-                               'CO': 28.0101,
-                               'CO2': 44.0095,
-                               'CH3OH': 32.04186,
-                               'C2H2': 26.03728,
-                               'C2H4': 28.05316,
-                               'C2H6': 30.06904,
-                               'N2O': 44.0128,
-                               'NO': 30.0061,
-                               'NO2': 46.0055,
-                               'N2': 28.0138, 
-                               'AR': 39.948,
-                               'C3H8': 44.09562}
-        self.sigma_list =     {'O2':  3.458,
-                               'H2': 2.920, 
-                               'OH': 2.750,
-                               'H2O': 2.605,
-                               'CH4': 3.746,
-                               'CO': 3.650,
-                               'CO2': 3.763,
-                               'CH3OH': 3.626,
-                               'C2H2': 4.100,
-                               'C2H4': 3.971,
-                               'C2H6': 4.982,
-                               'N2O': 3.828,
-                               'NO': 3.621,
-                               'NO2': 3.500,
-                               'N2': 3.621, 
-                               'AR': 3.330,
-                               'C3H8': 4.982}
-        self.epsOverKappa_list = {'O2':  107.4,
-                               'H2': 38.000, 
-                               'OH': 80.000,
-                               'H2O': 572.400,
-                               'CH4': 141.400,
-                               'CO': 98.100,
-                               'CO2': 244.000,
-                               'CH3OH': 481.800,
-                               'C2H2': 209.000,
-                               'C2H4': 280.800,
-                               'C2H6': 252.300,
-                               'N2O': 232.400,
-                               'NO': 97.530,
-                               'NO2': 200.000,
-                               'N2': 97.530, 
-                               'AR': 136.500,
-                               'C3H8': 266.800}
+        
+        self.import_properties()
         
         #ideal gas constant - J mol-1 K-1
         self.GC = 8.3144626
@@ -373,6 +155,62 @@ class crossflow_PCHE(object):
         self.C3 = 0.409 #uniform wall temperature
         self.C4 = 1 #local
         self.gamma = -0.1 #midpoint taken
+        
+    def import_properties(self):
+        '''
+        Imports modified NASA thermo file and CHEMKIN transport file for 
+        calculation of fluid properties.
+
+        Returns
+        -------
+        None.
+
+        '''
+        thermo = open('thermo_oneline.dat', 'r')
+        transport = open('transport.dat', 'r')
+        
+        self.cp_a1_list_high = {}
+        self.cp_a2_list_high = {}
+        self.cp_a3_list_high = {}
+        self.cp_a4_list_high = {}
+        self.cp_a5_list_high = {}
+        self.cp_a1_list_low = {}
+        self.cp_a2_list_low = {}
+        self.cp_a3_list_low = {}
+        self.cp_a4_list_low = {}
+        self.cp_a5_list_low = {}
+        self.epsOverKappa_list = {}
+        self.sigma_list = {}
+        self.dipole = {}
+        self.polarizability = {}
+        self.rotationalRelaxation = {}
+        self.MW_list = {}
+
+        
+        for line in thermo:
+            key, a1high, a2high, a3high, a4high, a5high, a6high, a7high, a1low,\
+                a2low, a3low, a4low, a5low, a6low, a7low = line.split()
+            self.cp_a1_list_high[key] = float(a1high)
+            self.cp_a2_list_high[key] = float(a2high)
+            self.cp_a3_list_high[key] = float(a3high)
+            self.cp_a4_list_high[key] = float(a4high)
+            self.cp_a5_list_high[key] = float(a5high)
+            self.cp_a1_list_low[key] = float(a1low)
+            self.cp_a2_list_low[key] = float(a2low)
+            self.cp_a3_list_low[key] = float(a3low)
+            self.cp_a4_list_low[key] = float(a4low)
+            self.cp_a5_list_low[key] = float(a5low)
+            
+        for line in transport:
+            key, shape, epsOverKappa, sigma, dipole, polarizability, rotRelax, \
+                MW = line.split()
+            self.epsOverKappa_list[key] = float(epsOverKappa)
+            self.sigma_list[key] = float(sigma)
+            self.dipole[key] = float(dipole)
+            self.polarizability[key] = float(polarizability)
+            self.rotationalRelaxation[key] = float(rotRelax)
+            self.MW_list[key] = float(MW)
+        return
         
     def update_reactant(self, reactant):
         #replace the reactant - use to set new conditions like flow rate, temperature, or pressure
@@ -922,8 +760,8 @@ def convert_T_vector(T_vector, dims):
     return reactantTemps, utilityTemps, reactantPlateTemps, utilityPlateTemps
 
 
-reactant_inlet = [{'CO2': 100}, 0.00702/5, 800, 1500000]
-utility_inlet = [{'CO2': 100}, 0.005, 800, 100000]
+reactant_inlet = [{'CH4': 100}, 0.00702/5, 900, 1500000]
+utility_inlet = [{'CH4': 100}, 0.005, 900, 100000]
 dimensions = [0.0015, 0.0015, 2, 2, 0.0011, 0.0021]
 
 exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
