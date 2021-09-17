@@ -185,10 +185,11 @@ class crossflow_PCHE(object):
         self.polarizability = {}
         self.rotationalRelaxation = {}
         self.MW_list = {}
-
+        self.shape = {}
+        self.Tmin = {}
         
         for line in thermo:
-            key, a1high, a2high, a3high, a4high, a5high, a6high, a7high, a1low,\
+            key, Tmin, a1high, a2high, a3high, a4high, a5high, a6high, a7high, a1low,\
                 a2low, a3low, a4low, a5low, a6low, a7low = line.split()
             self.cp_a1_list_high[key] = float(a1high)
             self.cp_a2_list_high[key] = float(a2high)
@@ -200,6 +201,7 @@ class crossflow_PCHE(object):
             self.cp_a3_list_low[key] = float(a3low)
             self.cp_a4_list_low[key] = float(a4low)
             self.cp_a5_list_low[key] = float(a5low)
+            self.Tmin[key] = float(Tmin)
             
         for line in transport:
             key, shape, epsOverKappa, sigma, dipole, polarizability, rotRelax, \
@@ -210,6 +212,7 @@ class crossflow_PCHE(object):
             self.polarizability[key] = float(polarizability)
             self.rotationalRelaxation[key] = float(rotRelax)
             self.MW_list[key] = float(MW)
+            self.shape[key] = int(shape)
         return
         
     def update_reactant(self, reactant):
@@ -403,8 +406,10 @@ class crossflow_PCHE(object):
         Bird, R. B., Stewart, W. E., & Lightfoot, E. N. (1966). 
         Transport Phenomena. Brisbane, QLD, Australia: 
         John Wiley and Sons (WIE). - note 2001 edition used for interaction
-        parameters. Methodology for viscosity from Chapter 1.4, thermal 
-        conductivity from Chapter 9.3, tabulated data from Appendix E.1.
+        parameters. Methodology for viscosity from Chapter 1.4, tabulated data 
+        from Appendix E.1.
+        
+        CHEMKIN Manual - Warnatz model for thermal conductivity
         
         """
         #grab fluid composition, update cp
@@ -412,6 +417,7 @@ class crossflow_PCHE(object):
             composition = self.reactant[0]
             molfractions = self.reactant_molefrac
             temperatures = self.reactant_T
+            pressures = self.reactant_P
             self.reactant_rho = self.reactant_P*self.reactant_MW/self.GC/self.reactant_T/1000
             self.reactant_cp = self.cp_a1_reactant + self.cp_a2_reactant*temperatures + self.cp_a3_reactant*np.power(temperatures, 2) + self.cp_a4_reactant*np.power(temperatures, 3) + self.cp_a5_reactant*np.power(temperatures, 4)
             self.reactant_cp = self.reactant_cp*self.GC/self.reactant_MW*1000 #to J/mol K, to J/kg K
@@ -420,6 +426,7 @@ class crossflow_PCHE(object):
             composition = self.utility[0]
             molfractions = self.utility_molefrac
             temperatures = self.utility_T
+            pressures = self.utility_P
             self.utility_rho = self.utility_P*self.utility_MW/self.GC/self.utility_T/1000
             self.utility_cp = self.cp_a1_utility + self.cp_a2_utility*temperatures + self.cp_a3_utility*np.power(temperatures, 2) + self.cp_a4_utility*np.power(temperatures, 3) + self.cp_a5_utility*np.power(temperatures, 4)
             self.utility_cp = self.utility_cp*self.GC/self.utility_MW*1000 #to J/mol K, to J/kg K
@@ -432,7 +439,8 @@ class crossflow_PCHE(object):
         nspecies = len(species)
         
         #create arrays for fluids and intermediate calculations
-        viscosity, Tstar, omega, ki, cpi = map(np.copy, [np.zeros((self.dimensions[2], self.dimensions[3], nspecies))]*5)
+        viscosity, Tstar, omega, ki, cpi, omega11, cvi, cvitrans, cvirot, \
+            cvivib, Dkk, Z298, ZT,  F298, FT, ftrans, frot, fvib, A, B = map(np.copy, [np.zeros((self.dimensions[2], self.dimensions[3], nspecies))]*20)
         phi = np.zeros((self.dimensions[2], self.dimensions[3], nspecies**2))
         viscosity_mixture, k_mixture = map(np.copy, [np.zeros((self.dimensions[2], self.dimensions[3]))]*2)
         
@@ -445,18 +453,57 @@ class crossflow_PCHE(object):
             Tstar[:, :, i] = temperatures/self.epsOverKappa_list[species[i]]
             omega[:, :, i] = 1.16145/(np.power(Tstar[:, :, i], 0.14874)) + 0.52487/(np.exp(0.77320*Tstar[:, :, i])) + 2.16178/(np.exp(2.43787*Tstar[:, :, i]))
             viscosity[:, :, i] = (2.6693 * (10**(-5)) * np.sqrt(self.MW_list[species[i]]*temperatures) / (self.sigma_list[species[i]]**2 * omega[:, :, i]))*98.0665/1000
-            #viscosity[:, :, i] = 5/16*(math.pi*self.MW_list[species[i]]*temperatures*4.788*10**-21)/(omega[:, :, i]*math.pi*self.sigma_list[species[i]]**2)
-            #viscosity[:, :, i] = 5/16*(math.pi*self.MW_list[species[i]]*1.38064852*10**(-16)*temperatures)**0.5/(math.pi*self.sigma_list[species[i]]**2*omega[:, :, i])*(10**15)           
-
+            omega11[:, :, i] = 1.06036/(np.power(Tstar[:, :, i], 0.15610)) + 0.19300/(np.exp(0.47635*Tstar[:, :, i])) + 1.03587/(np.exp(1.52996*Tstar[:, :, i])) + 1.76474/(np.exp(3.89411*Tstar[:, :, i]))
         for i in range(nspecies):
             cpi[:, :, i] = (self.cp_a1_list_low[species[i]]*np.less_equal(temperatures, 1000) + self.cp_a1_list_high[species[i]]*np.greater(temperatures, 1000)) + \
                             (self.cp_a2_list_low[species[i]]*np.less_equal(temperatures, 1000) + self.cp_a2_list_high[species[i]]*np.greater(temperatures, 1000))*temperatures + \
                             (self.cp_a3_list_low[species[i]]*np.less_equal(temperatures, 1000) + self.cp_a3_list_high[species[i]]*np.greater(temperatures, 1000))*np.power(temperatures, 2) + \
                             (self.cp_a4_list_low[species[i]]*np.less_equal(temperatures, 1000) + self.cp_a4_list_high[species[i]]*np.greater(temperatures, 1000))*np.power(temperatures, 3) + \
                             (self.cp_a5_list_low[species[i]]*np.less_equal(temperatures, 1000) + self.cp_a5_list_high[species[i]]*np.greater(temperatures, 1000))*np.power(temperatures, 4)
+            cpi[:, :, i] = cpi[:, :, i]*self.GC/self.MW_list[species[i]] * 1000
+            cvi[:, :, i] = cpi[:, :, i] - self.GC / self.MW_list[species[i]] * 1000
+
+            FT[:, :, i] = 1 + math.pi**(3/2)/2*(self.epsOverKappa_list[species[i]] * 1/temperatures)**(1/2) + \
+                ((math.pi**2)/4 + 2)*(self.epsOverKappa_list[species[i]] / temperatures) + \
+                math.pi**(3/2)*(self.epsOverKappa_list[species[i]]/temperatures)**(3/2)
+                
+            F298[:, :, i] = 1 + math.pi**(3/2)/2*(self.epsOverKappa_list[species[i]] * 1/298)**(1/2) + \
+                ((math.pi**2)/4 + 2)*(self.epsOverKappa_list[species[i]] / 298) + \
+                math.pi**(3/2)*(self.epsOverKappa_list[species[i]]/298)**(3/2)
             
+            ZT = self.rotationalRelaxation[species[i]]*F298/FT
+
+            density = pressures*self.MW_list[species[i]]/self.GC/temperatures/1000
+
+            #######
+            ##NOTE: Dkk should be multiplied by 10^^20, but the results are 
+            ##showing a need to be multiplied by 10^32 for different molecules
+            #######
+
+            Dkk[:, :, i] = 3/16*(2*math.pi*(1.38064852*10**-23)**3*np.power(temperatures, 3)/self.MW_list[species[i]]*1000)**0.5/(pressures*math.pi*self.sigma_list[species[i]]**2*omega11[:, :, i])*(10**32)
+
+            cvitrans[:, :, i] = 3/2*self.GC/self.MW_list[species[i]]*1000
+            cvirot[:, :, i] = (np.equal(self.shape[species[i]], 0) * 0 +\
+                               np.equal(self.shape[species[i]], 1) * 1 +\
+                               np.equal(self.shape[species[i]], 2) * 3/2)
+            
+            cvivib[:, :, i] = (np.equal(self.shape[species[i]], 0) * 0 + \
+                               np.equal(self.shape[species[i]], 1) * (cvi[:, :, i] - 5/2*self.GC/self.MW_list[species[i]]*1000) +\
+                               np.equal(self.shape[species[i]], 2) * (cvi[:, :, i] - 3 * self.GC/self.MW_list[species[i]]*1000))
+                
+            A[:, :, i] = 5/2 - density*Dkk[:, :, i]/viscosity[:, :, i]
+            B[:, :, i] = ZT[:, :, i] + 2/math.pi*(5/3*cvirot[:, :, i] + density*Dkk[:, :, i]/viscosity[:, :, i])
+            
+            cvirot[:, :, i] = cvirot[:, :, i] * self.GC / self.MW_list[species[i]] * 1000
+
+            ftrans[:, :, i] = 5/2*(1-2/math.pi*cvirot[:, :, i]/cvitrans[:, :, i]*A[:, :, i]/B[:, :, i])
+            frot[:, :, i] = density*Dkk[:, :, i]/viscosity[:, :, i]*(1+2/math.pi*A[:, :, i]/B[:, :, i])
+            fvib[:, :, i] = density*Dkk[:, :, i]/viscosity[:, :, i]
+            
+            #factor of 100 applied  based on tabulated data
+            ki[:, :, i] = viscosity[:, :, i]*(ftrans[:, :, i]*cvitrans[:, :, i] + frot[:, :, i]*cvirot[:, :, i] + fvib[:, :, i]*cvivib[:, :, i])
             #cpi[:, :, i] = self.cp_a_list[species[i]] + self.cp_b_list[species[i]]*temperatures + self.cp_c_list[species[i]]*np.power(temperatures, 2) + self.cp_d_list[species[i]]*np.power(temperatures, -2)
-            ki[:, :, i] = (cpi[:, :, i] + 5/4)*8314.4626*viscosity[:, :, i]/self.MW_list[species[i]]
+            #ki[:, :, i] = (cpi[:, :, i] + 5/4)*8314.4626*viscosity[:, :, i]/self.MW_list[species[i]]
                     
         #calculate values of phi for each interaction -- use 3D array with one 2D array for every pair
         #this is made exponentially slower for every added species
@@ -685,7 +732,6 @@ class crossflow_PCHE(object):
         
         self.reactant_Re = self.reactant_rho*self.reactant_u*self.reactant_dh/self.reactant_mu
         self.utility_Re = self.utility_rho*self.utility_u*self.utility_dh/self.utility_mu
-        
         #update friction factors
         self.reactant_f, self.reactant_Nu = self.ff_Nu('reactant')
         self.utility_f, self.utility_Nu = self.ff_Nu('utility')
@@ -760,8 +806,8 @@ def convert_T_vector(T_vector, dims):
     return reactantTemps, utilityTemps, reactantPlateTemps, utilityPlateTemps
 
 
-reactant_inlet = [{'CH4': 100}, 0.00702/5, 900, 1500000]
-utility_inlet = [{'CH4': 100}, 0.005, 900, 100000]
+reactant_inlet = [{'CO2': 50, 'CH4': 1, 'O2':1, 'AR': 3}, 0.00702/5, 649+273, 138000]
+utility_inlet = [{'CO2': 50, 'CH4': 1, 'O2':1, 'AR': 3}, 0.005, 649+273, 138000]
 dimensions = [0.0015, 0.0015, 2, 2, 0.0011, 0.0021]
 
 exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
