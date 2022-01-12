@@ -357,7 +357,8 @@ class crossflow_PCHE(object):
         turbulent = np.greater(reynolds, 2300)
         
         laminar_f = ((3.44 * Lplus**-0.5)**2 + (12 / (self.aspectratio**0.5 * (1 + self.aspectratio) * (1 - 192*self.aspectratio * math.pi**-5 * math.tanh(math.pi / (2*self.aspectratio)))))**2)**0.5/reynolds
-        turbulent_f = (0.79*np.log(reynolds) - 1.64)**-2/4
+        turbulent_f = (0.79*np.log(reynolds) - 1.64)**-2/4 #Gnielisnki
+        #turbulent_f = 0.079075*reynolds**-0.26
         frictionfactor = laminar*laminar_f + turbulent*turbulent_f
         
         #this might need np.power instead of exponents
@@ -442,7 +443,7 @@ class crossflow_PCHE(object):
         viscosity, Tstar, omega, ki, cpi, omega11, cvi, cvitrans, cvirot, \
             cvivib, Dkk, Z298, ZT,  F298, FT, ftrans, frot, fvib, A, B = map(np.copy, [np.zeros((self.dimensions[2], self.dimensions[3], nspecies))]*20)
         phi = np.zeros((self.dimensions[2], self.dimensions[3], nspecies**2))
-        viscosity_mixture, k_mixture = map(np.copy, [np.zeros((self.dimensions[2], self.dimensions[3]))]*2)
+        viscosity_mixture, k_mixture, viscCF = map(np.copy, [np.zeros((self.dimensions[2], self.dimensions[3]))]*3)
         
         # if temperatures.min() < 0:
         #     print('temperatures < 0, properties failed')
@@ -454,6 +455,12 @@ class crossflow_PCHE(object):
             omega[:, :, i] = 1.16145/(np.power(Tstar[:, :, i], 0.14874)) + 0.52487/(np.exp(0.77320*Tstar[:, :, i])) + 2.16178/(np.exp(2.43787*Tstar[:, :, i]))
             viscosity[:, :, i] = (2.6693 * (10**(-5)) * np.sqrt(self.MW_list[species[i]]*temperatures) / (self.sigma_list[species[i]]**2 * omega[:, :, i]))*98.0665/1000
             omega11[:, :, i] = 1.06036/(np.power(Tstar[:, :, i], 0.15610)) + 0.19300/(np.exp(0.47635*Tstar[:, :, i])) + 1.03587/(np.exp(1.52996*Tstar[:, :, i])) + 1.76474/(np.exp(3.89411*Tstar[:, :, i]))
+            
+            #apply viscosity correction factor for water
+            if species[i] == 'H2O':
+                viscCF = (-7.19443*10**-12)*np.power(temperatures, 3) + (1.27546*10**-8)*np.power(temperatures,2) + (8.69573*10**-5)*np.power(temperatures, 1) + 0.768920462
+                viscosity[:, :, i] = viscosity[:, :, i]*viscCF
+
         for i in range(nspecies):
             cpi[:, :, i] = (self.cp_a1_list_low[species[i]]*np.less_equal(temperatures, 1000) + self.cp_a1_list_high[species[i]]*np.greater(temperatures, 1000)) + \
                             (self.cp_a2_list_low[species[i]]*np.less_equal(temperatures, 1000) + self.cp_a2_list_high[species[i]]*np.greater(temperatures, 1000))*temperatures + \
@@ -806,8 +813,8 @@ def convert_T_vector(T_vector, dims):
     return reactantTemps, utilityTemps, reactantPlateTemps, utilityPlateTemps
 
 
-reactant_inlet = [{'CO2': 50, 'CH4': 1, 'O2':1, 'AR': 3}, 0.00702/5, 649+273, 138000]
-utility_inlet = [{'CO2': 50, 'CH4': 1, 'O2':1, 'AR': 3}, 0.005, 649+273, 138000]
+reactant_inlet = [{'H2O':1}, 0.00702/5, 500, 101325]
+utility_inlet = [{'H2O':1}, 0.005, 500, 101325]
 dimensions = [0.0015, 0.0015, 2, 2, 0.0011, 0.0021]
 
 exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
@@ -834,5 +841,14 @@ print('time to solve to steady-state with BDF:', tend-t0, 's')
 T_reactant, T_utility, T_reactant_plate, T_utility_plate = convert_T_vector(solution['y'][:, -1], dimensions)
 P_reactant = exchanger.reactant_P.min()
 P_utility = exchanger.utility_P.min()
+
+
+# results = np.zeros(100)
+# for i in range(400, 1500, 25):
+#      reactant_inlet = [{'H2O':1}, 0.00702/5, i, 101325]
+#      utility_inlet = [{'H2O':1}, 0.00702/5, i, 101325]
+#      exchanger = crossflow_PCHE(reactant_inlet, utility_inlet, dimensions)
+#      solution = solve_ivp(exchanger.transient_solver, [0, 10000], initial_temps, method = 'BDF', t_eval = [0, 1, 10, 100, 1000, 10000])
+#      results[int((i-400)/25)] = exchanger.reactant_mu[1, 1]
 
 
